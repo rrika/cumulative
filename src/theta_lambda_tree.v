@@ -54,15 +54,71 @@ Inductive Path {A B} {f: A->B} {g: B->B->B} : forall {b}, AbstractTree f g b -> 
           {br} (r: AbstractTree f g br) :
           Path r ->
           Path (at_inner f g l r)
-| p_here  bn (n: AbstractTree f g bn) : Path n.
+| p_here  {a} :
+          Path (at_leaf f g a).
+
+Require Import Coq.Program.Equality.
+
+Fixpoint lookupLeaf {A B: Type} (f: A->B) (g: B->B->B)
+    {b: B} {node: AbstractTree f g b} (path: Path node) : A :=
+  match path with
+  | p_left  l r pl => lookupLeaf f g pl
+  | p_right l r pr => lookupLeaf f g pr
+  | @p_here _ _ _ _ a => a
+  end.
 
 Definition updateLeaf {A B: Type} (f: A->B) (g: B->B->B) (update: A->A)
     {b: B} {node: AbstractTree f g b} (path: Path node) : { b': B & AbstractTree f g b' }.
 induction path.
 + exists bl. apply l.
 + exists br. apply r.
-+ exists bn. apply n.
++ exists (f (update a)). apply at_leaf.
 Defined.
+
+Definition updateLeafRel 
+  {A B: Type} (f: A->B) (g: B->B->B) (update: A->A)
+  (x y: { b: B & AbstractTree f g b }) :=
+    exists (path: Path (projT2 x)), updateLeaf f g update path = y.
+
+
+Require Import Coq.Init.Wf.
+
+(* a monotonous function that eventually reaches a zero element *)
+Definition wfFunc {A} (f: A->A) := @well_founded A (fun a b => f a = b).
+Theorem wfDec : wfFunc (fun (a: nat) => a-1).
+  intro.
+  constructor.
+  intros.
+  (* this doesn't work because well founded relations cant have loops,
+     and a self-loop at f x = x must be excluded by the relation's
+     definition *)
+Abort.
+
+Ltac apply_clear X := apply X; clear X.
+
+Theorem updateLeafWellFounded
+  {A B: Type} (f: A->B) (g: B->B->B) (update: A->A) (WF: wfFunc update) :
+  well_founded (updateLeafRel f g update).
+Proof.
+  intro.
+  destruct a as [xb x].
+  constructor.
+  intros.
+  destruct y as [yb y].
+  (* it's tempting to destroy the 'Acc' in the goal here, but not so fast!
+     for the final element there -is- no even smaller element.
+     in that situation there should be a contradiction in the assumptions. *)
+  destruct H as [path HUpdate].
+  induction path eqn:Z.
+  (* in the first two cases, the path taking the left or right side
+     implies that both x and y -have- to be at_inner, not at_leaf.
+     demonstrate this by destroying x and y and showing that their
+     at_inner cases are infeasible. *)
+  + enough (xb = g bl br). subst xb.
+    enough (x = at_inner f g l r). subst x.
+    destruct y.
+    rewrite <- H. clear H.
+    simpl.
 
 Definition ThetaLambdaNode (C: nat) :=
   @AbstractTree
@@ -70,3 +126,14 @@ Definition ThetaLambdaNode (C: nat) :=
     ThetaLambdaInner
     (thetaLambdaInnerFromLeaf C)
     thetaLambdaPropagate.
+
+Definition maxEnvelopeΛPath {C} {b} (node: ThetaLambdaNode C b) : Path node.
+  induction node.
+  pose (fst (tl_envelopeΛ b) <? fst (tl_envelopeΛ a)).
+  destruct b0 eqn:Z.
+  apply p_left.
+  apply IHnode1.
+  apply p_right.
+  apply IHnode2.
+  apply p_here.
+Qed.
