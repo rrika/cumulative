@@ -1,4 +1,4 @@
-Require Import List Nat.
+Require Import List PeanoNat.
 Require Import misc.
 Require Import definitions.
 Require Import assignments.
@@ -145,6 +145,71 @@ Proof.
   apply a_in_LCut.
   apply X0.
 Qed.
+
+Fixpoint maxOverSubsets {A} (l: list A) (f: list A -> nat) {struct l} :=
+  match l with | nil => f nil | cons x xs =>
+    max
+      (maxOverSubsets xs f)
+      (maxOverSubsets xs (fun r => f (cons x r)))
+  end.
+
+Theorem maxOverSubsetsFirst {A} (a: A) (l: list A) (f: list A -> nat) :
+  maxOverSubsets (cons a l) f =
+  max
+    (f (cons a nil))
+    (maxOverSubsets (cons a l) f).
+Proof.
+  induction l.
+  - simpl.
+    rewrite Nat.max_comm at 2.
+    rewrite Nat.max_assoc.
+    rewrite Nat.max_id.
+    rewrite Nat.max_comm.
+    reflexivity.
+  - simpl in *.
+    rewrite maxShuffle.
+    rewrite IHl at 1.
+    rewrite <- Nat.max_assoc.
+    reflexivity.
+Qed.
+
+Theorem maxOverSubsetsRel_allRel_useless
+  {A} (l: list A) (f: list A -> nat) (x: nat) :
+  maxOverSubsets l f <= x -> Forall (fun a => (f (cons a nil)) <= x) l.
+Proof.
+  induction l. constructor.
+  intro mOS.
+  constructor.
+  - rewrite maxOverSubsetsFirst in mOS.
+    apply Nat.max_lub_l in mOS.
+    apply mOS.
+  - apply IHl. clear IHl.
+    simpl in mOS.
+    apply Nat.max_lub_l in mOS.
+    apply mOS.
+Qed.
+
+Theorem maxOverSubsetsRel_allRel
+  {A} (l: list A) (f: list A -> nat) (g: list A -> nat) (x: nat) :
+  maxOverSubsets l f <= x -> Forall (fun a => (f (cons a nil)) <= x) l.
+Proof.
+  induction l. constructor.
+  intro mOS.
+  constructor.
+  - rewrite maxOverSubsetsFirst in mOS.
+    apply Nat.max_lub_l in mOS.
+    apply mOS.
+  - apply IHl. clear IHl.
+    simpl in mOS.
+    apply Nat.max_lub_l in mOS.
+    apply mOS.
+Qed.
+
+Fixpoint envelope (C: nat) (aa: list Activity) :=
+  maxOverSubsets aa (fun aa => C * (est aa) + (energy aa)).
+
+Definition LCut (aa: list Activity) (plct: nat) :=
+  filter (fun a => lct a <=? plct) aa.
 
 Definition edgeFindingOne :=
   forall (C: nat) (aa: list Activity) (plct: nat) (b: nat) (LB: b < length aa),

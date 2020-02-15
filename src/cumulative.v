@@ -4,17 +4,9 @@ Require Import misc.
 Require Import definitions.
 Require Import assignments.
 Require Import edge_finding.
+Require Import theta_tree.
 
 Axiom sorted : forall {A} (key: A->nat) (l: list A), list A.
-
-Definition dummyActivity : Activity.
-Proof.
-  refine (mkActivity 0 0 0 0).
-Qed.
-(*
-  refine (mkActivity 0 0 0 0 _).
-  intuition.
-Defined.*)
 
 Definition ends_before_x (C: nat) (aa: list Activity) (end_a b: nat) :=
   forall
@@ -30,7 +22,7 @@ Definition ends_before_x (C: nat) (aa: list Activity) (end_a b: nat) :=
     let assignment := combine aa starts in
     aa_valid assignment ->
     aa_fit C assignment ->
-    let end_b := nthi b starts SB + (a_p (nth b aa dummyActivity)) in
+    let end_b := nthi b starts SB + (a_p (nthi b aa LB)) in
     end_a < end_b.
 
 (* when to a group
@@ -90,81 +82,7 @@ Proof.
   rewrite (aa_uses_between_est_lct_is_energy assignment) in H4.
 *)
 
-Definition ends_before (C: nat) (aa: list Activity) (a b: nat)
-  (LA: a < length aa)
-  (LB: b < length aa) :=
-  forall (starts: list nat),
-    length starts = length aa ->
-    let assignment := combine aa starts in
-    aa_valid assignment /\ aa_fit C assignment ->
-    let end_a := nth a starts 0 + (a_p (nthi a aa LA)) in
-    let end_b := nth b starts 0 + (a_p (nthi b aa LB)) in
-    end_a < end_b.
 
-Definition LCut (aa: list Activity) (plct: nat) :=
-  filter (fun a => lct a <=? plct) aa.
-
-Fixpoint maxOverSubsets {A} (l: list A) (f: list A -> nat) {struct l} :=
-  match l with | nil => f nil | cons x xs =>
-    max
-      (maxOverSubsets xs f)
-      (maxOverSubsets xs (fun r => f (cons x r)))
-  end.
-
-Theorem maxOverSubsetsFirst {A} (a: A) (l: list A) (f: list A -> nat) :
-  maxOverSubsets (cons a l) f =
-  max
-    (f (cons a nil))
-    (maxOverSubsets (cons a l) f).
-Proof.
-  induction l.
-  - simpl.
-    rewrite Nat.max_comm at 2.
-    rewrite Nat.max_assoc.
-    rewrite Nat.max_id.
-    rewrite Nat.max_comm.
-    reflexivity.
-  - simpl in *.
-    rewrite maxShuffle.
-    rewrite IHl at 1.
-    rewrite <- Nat.max_assoc.
-    reflexivity.
-Qed.
-
-Theorem maxOverSubsetsRel_allRel_useless
-  {A} (l: list A) (f: list A -> nat) (x: nat) :
-  maxOverSubsets l f <= x -> Forall (fun a => (f (cons a nil)) <= x) l.
-Proof.
-  induction l. constructor.
-  intro mOS.
-  constructor.
-  - rewrite maxOverSubsetsFirst in mOS.
-    apply Nat.max_lub_l in mOS.
-    apply mOS.
-  - apply IHl. clear IHl.
-    simpl in mOS.
-    apply Nat.max_lub_l in mOS.
-    apply mOS.
-Qed.
-
-Theorem maxOverSubsetsRel_allRel
-  {A} (l: list A) (f: list A -> nat) (g: list A -> nat) (x: nat) :
-  maxOverSubsets l f <= x -> Forall (fun a => (f (cons a nil)) <= x) l.
-Proof.
-  induction l. constructor.
-  intro mOS.
-  constructor.
-  - rewrite maxOverSubsetsFirst in mOS.
-    apply Nat.max_lub_l in mOS.
-    apply mOS.
-  - apply IHl. clear IHl.
-    simpl in mOS.
-    apply Nat.max_lub_l in mOS.
-    apply mOS.
-Qed.
-
-Fixpoint envelope (C: nat) (aa: list Activity) :=
-  maxOverSubsets aa (fun aa => C * (est aa) + (energy aa)).
 
 (* Definition envelope_exists (C: nat) (aa: list Activity) :=
   { subset: list Activity |
@@ -199,10 +117,13 @@ Check fe.
        unassignableByEnergy C (s :: aa) *)
 
 
+Definition detection_phase (C: nat) (a: list Activity) : list nat.
+Admitted.
+
 (*Definition detection_phase (C: nat) (a: list Activity) : list nat :=
   let by_uest := sorted est a in
   let by_lct := sorted est a in
-  let tree := mk_theta_lambda_tree (sorted est a) in *)
+  let tree := mk_theta_lambda_tree (sorted est a) in*)
 
 (*
 def edge_finding(tasks):
@@ -238,47 +159,6 @@ def edge_finding(tasks):
 
 	return prec
 *)
-
-Inductive SomeKindaTree : Type :=
-| t_inner (eest: nat) (energy: nat) (nvlpc: nat)
-          (lhs: SomeKindaTree) (rhs: SomeKindaTree) : SomeKindaTree
-| t_leaf (energy: nat) (nvlpc: nat) : SomeKindaTree.
-
-Definition ThetaTree := SomeKindaTree.
-Axiom tree_insert : forall (t: ThetaTree) (n: Activity), ThetaTree.
-
-Axiom split_at : forall (node: SomeKindaTree) (est_split: nat),
-  (SomeKindaTree * SomeKindaTree).
-
-Definition tree_energy (node: SomeKindaTree) := match node with
-| t_inner _ energy _ _ _ => energy
-| t_leaf energy _ => energy
-end.
-
-Definition nvlpc (node: SomeKindaTree) := match node with
-| t_inner _ _ nvlpc _ _ => nvlpc
-| t_leaf _ nvlpc => nvlpc
-end.
-
-Fixpoint eval_maxest_i
-  (task_lct: nat)
-  (C_c: nat)
-  (E: nat)
-  (node: SomeKindaTree)
-:
-  nat
-:=
-  match node with
-  | t_leaf eest _ => eest
-  | t_inner eest _ _ lhs rhs =>
-    if (C_c) * task_lct <? nvlpc rhs + E then
-      eval_maxest_i task_lct C_c E rhs
-    else
-      eval_maxest_i task_lct C_c (E+tree_energy rhs) lhs
-  end.
-
-Definition eval_maxest (C: nat) (c: nat) (task_lct: nat) (root: SomeKindaTree) :=
-  eval_maxest_i task_lct (C-c) 0 root.
 
 Axiom unique_nats : forall (i: list nat), list nat.
 
@@ -370,36 +250,3 @@ Proof.
   intros.
   constructor; auto.
 Qed.
-
-(*
-
-Definition isMaxOfFunctionOverType
-    {A: Type} (p : A -> Prop) (f: A -> nat) (max: nat) : Prop :=
-  (forall (a: A), p a -> f a <= max) /\ (exists (a: A), p a /\ f a = max).
-
-Inductive SortedTree (A: Type) (rel: A -> A -> Prop) : list A -> A -> Type :=
-| o_leaf (a: A) : SortedTree A rel (cons a nil) a
-| o_node {ll lr} {l r} (lhs: SortedTree A rel ll l) (rhs: SortedTree A rel lr r) :
-  rel l r -> SortedTree A rel (ll++lr) l.
-
-Definition est_le {A} `{Work A} (a b: A) := (est a) <= (est b).
-
-Definition ThetaTree := SortedTree Activity est_le.
-
-Fixpoint theta_tree_energy {l a} (t: ThetaTree l a) : nat := match t with
-| o_leaf _ _ activity => est activity
-| o_node _ _ lhs rhs related => (theta_tree_energy lhs) + (theta_tree_energy rhs)
-end.
-
-Fixpoint theta_tree_envelope {l a} (C: nat) (t: ThetaTree l a) : nat := match t with
-| o_leaf _ _ activity => (est activity) * C + (energy activity)
-| o_node _ _ lhs rhs related =>
-    max
-    (theta_tree_envelope C lhs + theta_tree_energy rhs)
-    (theta_tree_envelope C rhs)
-end.
-
-Definition envelope_op (C: nat) (energy_a envelope_a energy_b envelope_b) :=
-  (energy_a + energy_b, max (envelope_a + energy_a) envelope_b).
-
-*)
