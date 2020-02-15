@@ -1,0 +1,7 @@
+-R src Top
+./src/definitions.v
+./src/assignments.v
+./src/edge_finding.v
+./src/theta_tree.v
+./src/theta_lambda_tree.v
+./src/cumulative.v
