@@ -1,7 +1,5 @@
-
-Inductive AbstractTree {A B: Type} (f: A->B) (g: B->B->B) : B -> Type :=
-| at_inner {a b} : AbstractTree f g a -> AbstractTree f g b -> AbstractTree f g (g a b)
-| at_leaf  (a: A) : AbstractTree f g (f a).
+Require Import Nat.
+Require Import definitions.
 
 Record ThetaLambdaInner := mkTLInner {
   tl_eest      : nat;
@@ -42,6 +40,29 @@ Definition thetaLambdaPropagate (a b: ThetaLambdaInner) : ThetaLambdaInner :=
           (radd1 (tl_envelopeΛ a) (tl_energy  b))
           (radd2 (tl_envelope  a) (tl_energyΛ b))))
 .
+
+Inductive AbstractTree {A B: Type} (f: A->B) (g: B->B->B) : B -> Type :=
+| at_inner {a b} : AbstractTree f g a -> AbstractTree f g b -> AbstractTree f g (g a b)
+| at_leaf  (a: A) : AbstractTree f g (f a).
+
+Inductive Path {A B} {f: A->B} {g: B->B->B} : forall {b}, AbstractTree f g b -> Type :=
+| p_left  {bl} (l: AbstractTree f g bl)
+          {br} (r: AbstractTree f g br) :
+          Path l ->
+          Path (at_inner f g l r)
+| p_right {bl} (l: AbstractTree f g bl)
+          {br} (r: AbstractTree f g br) :
+          Path r ->
+          Path (at_inner f g l r)
+| p_here  bn (n: AbstractTree f g bn) : Path n.
+
+Definition updateLeaf {A B: Type} (f: A->B) (g: B->B->B) (update: A->A)
+    {b: B} {node: AbstractTree f g b} (path: Path node) : { b': B & AbstractTree f g b' }.
+induction path.
++ exists bl. apply l.
++ exists br. apply r.
++ exists bn. apply n.
+Defined.
 
 Definition ThetaLambdaNode (C: nat) :=
   @AbstractTree

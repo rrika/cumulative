@@ -117,13 +117,13 @@ Check fe.
        unassignableByEnergy C (s :: aa) *)
 
 
-Definition detection_phase (C: nat) (a: list Activity) : list nat.
-Admitted.
+(*Definition detection_phase (C: nat) (a: list Activity) : list nat.
+Admitted.*)
 
-(*Definition detection_phase (C: nat) (a: list Activity) : list nat :=
+Definition detection_phase (C: nat) (a: list Activity) : list nat :=
   let by_uest := sorted est a in
   let by_lct := sorted est a in
-  let tree := mk_theta_lambda_tree (sorted est a) in*)
+  let tree := mk_theta_lambda_tree (sorted est a) in
 
 (*
 def edge_finding(tasks):
@@ -136,8 +136,8 @@ def edge_finding(tasks):
 
 	def assign_leaf(i, inΛ):
 		nonlocal numΛ
-		nodes[i] = NodeRhoLambda.leaf((tasks[i], inΛ))
-		atree.rebuild(nodes, i, NodeRhoLambda.node)
+		nodes[i] = NodeThetaLambda.leaf((tasks[i], inΛ))
+		atree.rebuild(nodes, i, NodeThetaLambda.node)
 
 	for i in range(len(tasks)):
 		assign_leaf(i, False)
@@ -248,5 +248,4 @@ Proof.
   unfold apply_update.
   unfold equallyAssignable.
   intros.
-  constructor; auto.
-Qed.
+Admitted.

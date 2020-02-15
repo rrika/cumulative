@@ -2,6 +2,8 @@ Require Import List Nat.
 Require Import misc.
 Require Import definitions.
 
+Require Import Lia.
+
 Definition forall_assignments
     (C: nat)
     (aa: list Activity)
@@ -57,7 +59,6 @@ Proof.
     apply IHsamples.
 Qed.
 
-Require Import Omega.
 
 Theorem sum_pair_sums {A} (l: list A) (f g: A -> nat) :
   mapfold add f l +
@@ -68,7 +69,7 @@ Proof.
   - auto.
   - unfold mapfold in *. simpl.
     rewrite <- IHl.
-    omega.
+    intuition.
 Qed.
 
 Theorem add_inner
@@ -98,13 +99,13 @@ Proof.
   subst.
   apply sum_pair_sums.
   rewrite <- H.
-  omega.
+  intuition.
 
   induction outer.
   auto.
   simpl.
   rewrite <- IHouter.
-  rewrite Nat.add_0_r.
+  rewrite PeanoNat.Nat.add_0_r.
   reflexivity.
 Qed.
 
@@ -160,13 +161,13 @@ Proof.
     clear IHaa.
     replace (mapfold add (fun x : B => f a x + 0) bb)
       with (mapfold add (f a) bb).
-    omega.
+    intuition.
     induction bb.
     auto.
     rewrite mapfold_step.
     rewrite mapfold_step.
     rewrite IHbb.
-    omega.
+    intuition.
 Qed.
 
 
@@ -287,7 +288,7 @@ Proof.
   intros R S.
   apply (Forall_weaken _ _ x).
   intros a [t u].
-  omega.
+  intuition.
 Qed.
 
 Theorem aa_uses_between_est_lct_is_energy
@@ -299,11 +300,11 @@ Proof.
   constructor.
   apply Forall_cons.
   constructor.
-  apply Nat.le_min_l.
-  apply Nat.le_max_l.
+  apply PeanoNat.Nat.le_min_l.
+  apply PeanoNat.Nat.le_max_l.
   apply (Forall_bound_weaken (est aa) (lct aa)).
-  apply Nat.le_min_r.
-  apply Nat.le_max_r.
+  apply PeanoNat.Nat.le_min_r.
+  apply PeanoNat.Nat.le_max_r.
   auto.
 Qed.
 
@@ -356,7 +357,7 @@ Proof.
 
   assert (forall a b, a<=b /\ b<a -> False).
   intros.
-  omega.
+  intuition.
   apply (H (energy aa) (((lct aa)-(est aa))*C)).
   split; assumption.
   assumption.
