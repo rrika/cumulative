@@ -69,7 +69,7 @@ Proof.
   - auto.
   - unfold mapfold in *. simpl.
     rewrite <- IHl.
-    intuition.
+    lia.
 Qed.
 
 Theorem add_inner
@@ -99,7 +99,7 @@ Proof.
   subst.
   apply sum_pair_sums.
   rewrite <- H.
-  intuition.
+  lia.
 
   induction outer.
   auto.
@@ -288,7 +288,7 @@ Proof.
   intros R S.
   apply (Forall_weaken _ _ x).
   intros a [t u].
-  intuition.
+  lia.
 Qed.
 
 Theorem aa_uses_between_est_lct_is_energy
@@ -357,7 +357,7 @@ Proof.
 
   assert (forall a b, a<=b /\ b<a -> False).
   intros.
-  intuition.
+  lia.
   apply (H (energy aa) (((lct aa)-(est aa))*C)).
   split; assumption.
   assumption.

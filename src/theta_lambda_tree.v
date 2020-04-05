@@ -77,24 +77,29 @@ Defined.
 
 Definition updateLeafRel 
   {A B: Type} (f: A->B) (g: B->B->B) (update: A->A)
-  (x y: { b: B & AbstractTree f g b }) :=
+  (y x: { b: B & AbstractTree f g b }) :=
     exists (path: Path (projT2 x)), updateLeaf f g update path = y.
 
 
 Require Import Coq.Init.Wf.
 
-(* a monotonous function that eventually reaches a zero element *)
-Definition wfFunc {A} (f: A->A) := @well_founded A (fun a b => f a = b).
-Theorem wfDec : wfFunc (fun (a: nat) => a-1).
-  intro.
-  constructor.
-  intros.
-  (* this doesn't work because well founded relations cant have loops,
-     and a self-loop at f x = x must be excluded by the relation's
-     definition *)
-Abort.
+Definition wfFunc
+  {A}
+  (f: A -> A)
+:= {P: A->Prop | @well_founded A (fun a b => P b /\ f b = a)}.
 
 Ltac apply_clear X := apply X; clear X.
+
+(* just make sure wfFunc is sane *)
+Theorem wfDec : wfFunc (fun (a: nat) => a-1).
+  exists (fun x => x > 0).
+  intro.
+  induction a; constructor; intros y [precondition rel].
+  inversion precondition.
+  simpl in rel.
+  rewrite PeanoNat.Nat.sub_0_r in rel; subst.
+  apply IHa.
+Qed.
 
 Theorem updateLeafWellFounded
   {A B: Type} (f: A->B) (g: B->B->B) (update: A->A) (WF: wfFunc update) :
@@ -109,16 +114,27 @@ Proof.
      for the final element there -is- no even smaller element.
      in that situation there should be a contradiction in the assumptions. *)
   destruct H as [path HUpdate].
+  set (yby := existT (fun b : B => AbstractTree f g b) yb y) in *.
+  
   induction path eqn:Z.
+  (*
+       x    y
+      / \
+     l   r
+  *)
   (* in the first two cases, the path taking the left or right side
      implies that both x and y -have- to be at_inner, not at_leaf.
      demonstrate this by destroying x and y and showing that their
      at_inner cases are infeasible. *)
+  (*
   + enough (xb = g bl br). subst xb.
     enough (x = at_inner f g l r). subst x.
     destruct y.
     rewrite <- H. clear H.
-    simpl.
+    simpl.*)
+  + admit.
+  + admit.
+  + 
 
 Definition ThetaLambdaNode (C: nat) :=
   @AbstractTree

@@ -1,4 +1,4 @@
-Require Import List PeanoNat.
+Require Import List PeanoNat Lia.
 Require Import misc.
 Require Import definitions.
 Require Import assignments.
@@ -39,7 +39,7 @@ Proof.
   specialize (rhs starts AllAssignH0 AllAssignH1).
   simpl in *.
   clear AllAssignH0 AllAssignH1.
-  intuition.
+  lia.
 Qed.
 
 Theorem ends_before_transitive_task_time_time
@@ -57,7 +57,7 @@ Proof.
   clear Heqn.
   subst end_a.
   clear C LA aa starts assignment H0 H1.
-  intuition.
+  lia.
 Qed.
 
 Theorem ends_before_task_time_lct
