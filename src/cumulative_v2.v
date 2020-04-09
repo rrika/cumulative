@@ -112,6 +112,7 @@ Inductive ProofStep (C: nat) (X: AA) (c p: nat) (oe ne l: nat) : Type :=
     ProofStep C X c p oe ne l
 | ps_tighten_est_partial xe xl nep :
     S nep = ne ->
+    xe <= xl ->
     xe <= oe ->
     xl <  oe + p ->
     oe <= ne -> (* could extract this from InBounds *)
@@ -148,6 +149,12 @@ Proof.
   apply (load_sample_equ Y Z u).
 Qed.
 
+Inductive VV : AA -> Type :=
+| vv1 a aa :
+  VV aa -> a_est a + a_p a <= a_lct a ->
+  VV (cons a aa)
+| vv0 : VV nil.
+
 Inductive InBounds : AA -> list nat -> Type :=
 | ib1 a aa s ss :
   InBounds aa ss ->
@@ -162,6 +169,17 @@ Proof.
   intro.
   inversion H.
   auto.
+Qed.
+
+Theorem VVIB {aa: AA} {ss: list nat} :
+  InBounds aa ss -> VV aa.
+Proof.
+  intro.
+  induction H.
+  apply vv1.
+  assumption.
+  lia.
+  apply vv0.
 Qed.
 
 Theorem InBounds_same_length {aa ss} (I: InBounds aa ss) : length aa = length ss.
@@ -185,6 +203,23 @@ Inductive SelectWithStartTimes : A -> nat -> AA -> list nat -> Type :=
   s + a_p a <= a_lct a ->
   InBounds aa ss ->
   SelectWithStartTimes a s (cons a aa) (cons s ss).
+
+Theorem InBounds_complement_imply {X Y: AA} {c p oe ne l} (B: ne+p-1 <= l) :
+  forall (u: Update c p oe l ne l X Y) (ss: list nat),
+    InBounds (l_complement X Y u) ss -> InBounds X ss.
+Proof.
+  induction u; intros.
+
+  destruct ss; inversion H; subst.
+  specialize (IHu ss H4).
+  constructor; assumption.
+
+  destruct ss; inversion H; subst; clear H; simpl in *.
+  constructor; simpl in *.
+  assumption.
+  assumption.
+  lia.
+Qed.
 
 Theorem split_InBounds (X Y: AA) {c p oe ne l}
   (u: Update c p oe l ne l X Y) (ss: list nat)
@@ -324,6 +359,49 @@ Proof.
   assumption.
 Qed.
 
+Inductive AgreeCP : AA -> AA -> Type :=
+| acp0 : AgreeCP nil nil
+| acp1 a b aa bb :
+    AgreeCP aa bb ->
+    a_c a = a_c b ->
+    a_p a = a_p b ->
+    AgreeCP (cons a aa) (cons b bb).
+
+Definition update_relate_3
+  (f g: A->nat) (h: A->nat->nat)
+  {X Y: AA} {ss: list nat}
+  (u: InBounds X ss)
+  (Hfh: forall i s,
+    InBounds (cons i nil) (cons s nil) ->
+    f i <= h i s)
+  (CP: AgreeCP X Y)
+  (Z: forall a b,
+    a_c a = a_c b ->
+    a_p a = a_p b ->
+    forall s, h a s = h b s)
+:
+  summap f X <= summap (fun a_s => h (fst a_s) (snd a_s)) (combine Y ss).
+Proof.
+  generalize dependent ss.
+  induction CP; intros.
+  simpl. auto.
+  destruct ss.
+  inversion u.
+  inversion u; subst.
+  simpl.
+  specialize (IHCP ss H3).
+  specialize (Hfh a n).
+  rewrite (Z a b) in Hfh.
+  especialize Hfh.
+  constructor.
+  constructor.
+  assumption.
+  assumption.
+  lia.
+  assumption.
+  assumption.
+Qed.
+
 Definition update_relate_2
   (f g: A->nat) (h: A->nat->nat)
   {a: A} {s: nat}
@@ -333,7 +411,7 @@ Definition update_relate_2
     InBounds (cons i nil) (cons s nil) ->
     f i <= h i s)
   (Hgh:
-    InBounds (cons a nil) (cons s nil) -> (*added this recently*)
+    InBounds (cons a nil) (cons s nil) ->
     f a + g a <= h a s)
 :
   summap f X + (g a) <= summap (fun a_s => h (fst a_s) (snd a_s)) (combine X ss).
@@ -1230,8 +1308,12 @@ Proof.
 Qed.
 
 Theorem load_underestimates_load_sample_2_impl
-  a s aa ss (sws : SelectWithStartTimes a s aa ss) est lct rrr
+  a s {aa ss} (sws : SelectWithStartTimes a s aa ss) est lct rrr
 :
+  (* a is from the Z branch *)
+  (* xe <= e  <= l  *)
+  (* xe <= xl <  l  *)
+  (*       xl < e+p *)
   est <= lct ->
   est <= (a_est a) ->
   lct <  (a_lct a) ->
@@ -1266,8 +1348,8 @@ Proof.
 Qed.
 
 Theorem map_load1_zero_zero
-  {c p oe ol ne nl X Y Q}
-  (u: Update c p oe ol ne nl X Y)
+  {X Q}
+  (vv: VV X)
   {est lct: nat}
   (R : lct < est)
 :
@@ -1281,57 +1363,62 @@ Proof.
   auto.
   apply IHQ.
 
-  generalize dependent Y.
   induction X; intros.
   auto.
+  inversion vv; subst.
   simpl.
-  destruct Y; inversion u; [subst a0 a1 xs ys|].
-  rewrite <- (IHX Y H0); clear IHX H0.
+  rewrite <- (IHX H1); clear IHX H1.
   rewrite Nat.add_0_r.
   unfold load1.
   destroy_bools_on_sight.
   exfalso.
   lia.
-
-
+  reflexivity.
+  reflexivity.
 Qed.
 
 (* if load_underestimates_load_sample was so good, why didn't they make *)
 Theorem load_underestimates_load_sample_2
-  X Y c {p oe ol ne nl} (u: Update c p oe ol ne nl X Y) ss
-  (BX : InBounds (l_complement X Y u) ss)
+  X Y c {p oe ne l} (u: Update c p oe l ne l X Y) ss
+  (BX : InBounds X ss)
+  (BZ : InBounds (l_complement X Y u) ss)
   (est lct rrr: nat)
 :
   est <= oe ->
-  lct <  ol ->
+  lct < l ->
+  lct < ne + p - 1 ->
   oe + p > lct ->
-  rrr <= ((lct - est)-(min (lct-est) (ol-p-est))) ->
-  load X est lct + c * rrr <= load_sample_sum X ss est (lct - est).
-
+  (*rrr <= ((lct - est)-(min (lct-est) (l-p-est))) ->*)
+  rrr <= lct - est - min (lct - est) (ne + p - 1 - p - est) ->
+  load (l_complement X Y u) est lct + c * rrr <= load_sample_sum (l_complement X Y u) ss est (lct - est).
 Proof.
-  intros U V W F.
-  replace (load_sample_sum X ss est (lct-est)) with
-          (load_sample_sum (l_complement X Y u) ss est (lct-est)).
-  rewrite (transpose BX); try assumption.
+  intros U V T W F.
+  rewrite (transpose BZ); try assumption.
   unfold load.
   rewrite summap_mapfold.
 
-  pose proof (SelectWithStartTimes_from_Update_Z u BX).
+  pose proof (VVIB BX) as VVX.
+  pose proof (VVIB BZ) as VVZ.
+
+  pose proof (SelectWithStartTimes_from_Update_Z u BZ).
   destruct H.
 
   destruct (lct <? est) eqn:R.
   - relb_to_rel.
     assert (lct-est = 0) by lia.
+    clear s.
     rewrite H.
     rewrite H in F; simpl in F; inversion F; clear F.
     simpl.
     rewrite Nat.mul_0_r.
     rewrite Nat.add_0_r.
-    apply (map_load1_zero_zero s).
-    apply R.
+    apply map_load1_zero_zero.
+    assumption.
+    assumption.
 
-  - remember ({| a_est := oe; a_lct := ol; a_c := c; a_p := p |}) as a.
-  eapply (update_relate_2
+  - relb_to_rel.
+  remember ({| a_est := oe; a_lct := ne+p-1; a_c := c; a_p := p |}) as a.
+  eapply (@update_relate_2
 
     (* relate lower bound consisting of *)
     (* - f: other tasks:  the usual approximation (load1)    *)
@@ -1342,7 +1429,7 @@ Proof.
     (*f*) (load1 est lct)
     (*g*) (fun a => _)
     (*h*) (fun x s => load1_sample_sum x s est (lct - est))
-    s
+    a x (l_complement X Y u) ss s
   ).
   intros.
   apply load1_underestimates_load1_sample_sum.
@@ -1351,36 +1438,23 @@ Proof.
   intro Q.
   replace c with (a_c a). all: swap 1 2. subst; auto.
   replace (load1 _ _ _) with 0; simpl.
-  (* ... + [...] <= ... *)
-  apply (load_underestimates_load_sample_2_impl a x X ss s); subst; auto.
-  relb_to_rel.
-  assumption.
 
-  (* [...] + ... <= ... *)
+  (* ... + [...] <= ... *)
+  apply (load_underestimates_load_sample_2_impl a x s); subst; subst; simpl; auto.
+
   unfold load1.
   destruct (est <=? a_est a) eqn:J.
   destruct (a_lct a <=? lct) eqn:K. 
   repeat relb_to_rel.
   exfalso.
-  inversion Q.
-  clear H3 H H0 H1 H2.
+  replace (a_lct a) with (ne+p-1) in *.
 
-
-  assert (a_lct a >= lct).
-  assert (ol >= oe + p).
-  admit.
-  admit.
-  admit.
-(*
   lia.
-  assert (a_lct a >= ol).
-  lia.
-  apply.
-*)
-  
+  subst.
   reflexivity.
   reflexivity.
-Admitted.
+  reflexivity.
+Qed.
 
 Theorem load_sample_sum_limit C X ss
   (LX : forall t : nat, load_sample X ss t <= C)
@@ -1587,13 +1661,16 @@ Proof.
        {| a_est := oe; a_lct := l; a_c := c; a_p := p |})
     with 0 in LX.
 
+    *
+
     (* rewrite
         ∑X ... = ∑X\kX ... + 0
-        ∑Z ... = ∑Z\kZ ... + c*p
+        ∑Z ... = ∑Z\kZ ... + c*???
        as
-        ∑Z = ∑X + c*p
+        ∑Z = ∑X + c*???
     *)
     rewrite Nat.add_0_r in LX.
+    rewrite Nat.add_0_r in LZ.
     subst common.
 
     (* assumption lcx says that the start times will not cause overload, so *)
@@ -1607,81 +1684,55 @@ Proof.
     (* show g: load X xe xl + c*(xl-nep) > overloadlevel *)
       (* was contained in the ProofStep *)
 
-    (* show h: load X xe xl + c*(xl-nep) <= ∑t load_sample X _ t *)
-    enough (load X xe xl + c * (xl-nep) <= load_sample_sum X ss xe (xl - xe)).
+    (* show h: load Z xe xl + c*(xl-nep) <= ∑t load_sample X _ t *)
+    enough (load (l_complement X Y u)  xe xl + c * (xl-nep) <= load_sample_sum (l_complement X Y u) ss xe (xl - xe)) as h.
 
-    (* show j: ∑t load_sample X _ t <= overload *)
-    pose proof (load_sample_sum_limit C X ss lcx ibx xe (xl - xe)) as j.
+    (* show j: ∑t load_sample Z _ t <= overload *)
+    pose proof (load_sample_sum_limit C (l_complement X Y u) ss H i xe (xl - xe)) as j.
 
-    (* combined *) (* TODO: a bunch of these need Z bounds, not X bounds *)
+    (* combined *)
     (*   g:   overload < load X xexl + c*(xl-nep)                                    *)
-    (*   h:              load X xexl              <= ∑t load_sample X _ t            *)
-    (*   j:                                          ∑t load_sample X _ t < overload *)
+    (*   LZ:      load X xexl = load Z xexl                                          *)
+    (*   h:              load Z xexl + c*(xl-nep) <= ∑t load_sample Z _ t            *)
+    (*   j:                                          ∑t load_sample Z _ t < overload *)
     lia.
 
     (* move this up (h) *)
     assert (oe+p <= ne+p) by lia.
     assert (xl < l) by lia.
     pose proof (load_underestimates_load_sample_2
-      X Y c u ss i xe xl (xl - nep) l0 H1).
+      X Y c u ss ibx i xe xl (xl - nep) l1 H1).
     especialize H2.
     lia.
     apply H2.
+    lia.
 
     clear C X Y u g0 ibx lcx i LZ H H2 ss.
-    enough (ne > xe+min (xl-xe) (l-p-xe)).
+    replace (ne+p-1-p-xe) with (ne-1-xe) by lia.
+    enough (ne > xe+min (xl-xe) (ne-1-xe)).
+    clear l0 l1 l2 l3 l4 g W H0 H1.
     lia.
-    assert (xe<=xl) by admit.
-  (*
-
-    assert (ne >= xl-p) by lia.
-    assert (nep >= (xl-p)-1) by lia.
-  *)
-    destruct (Nat.min_spec (xl - xe) (l - p - xe)) as [[A B]|[A B]];
-      rewrite B; clear B.
-    replace (xe+(xl-xe)) with xl by lia.
-    (* show this from A *)
-    assert (xl < l-p) by lia.
-
+    replace (xe + min (xl - xe) (ne - 1 - xe))
+       with (min xl (ne-1)) by lia.
     lia.
-    lia.
-
-  admit.
-    enough (nep >= xe + (l-p-xe)).
-    lia.
-    replace (xe+(l-p-xe)) with (l-p) by lia.
-  
-
-    lia.
-    
-    enough (nep >= xl - xe - min (xl - xe) (l - p - xe)).
-    lia.
-
-    admit.
-    admit.
-
-
-
-    lia.
-
 
     (* justify the replacements earlier *)
     (* load1 xe..xl oe..l = 0 *)
-    unfold load1.
-    simpl.
-    destroy_bools_on_sight; try reflexivity.
-    lia.
+    * unfold load1.
+      simpl.
+      destroy_bools_on_sight; try reflexivity.
+      lia.
 
     (* load1 _ _ kZ = 0  *)
-    clear common LX LZ.
-    unfold load1.
-    simpl in *.
-    replace (ne + p - 1 <=? xl) with false.
-    destroy_bools_on_sight; reflexivity.
-    symmetry.
-    apply Nat.leb_gt.
-    lia.
-Admitted.
+    * clear common LX LZ.
+      unfold load1.
+      simpl in *.
+      replace (ne + p - 1 <=? xl) with false.
+      destroy_bools_on_sight; try reflexivity.
+      symmetry.
+      apply Nat.leb_gt.
+      lia.
+Qed.
 
 Definition trn (C: nat) (X Y: AA) (P: Proof C X Y)
   (ss: list nat) (*lens*)
@@ -1738,12 +1789,12 @@ Qed.
 
 Theorem example1_step_12 : ProofStep 3 example1_1 2 3 3 4 9.
 Proof.
-  refine (ps_tighten_est_partial 3 example1_1 2 3 3 4 9 2 5 3 _ _ _ _ _ _); try lia.
+  refine (ps_tighten_est_partial 3 example1_1 2 3 3 4 9 2 5 3 _ _ _ _ _ _ _ _); try lia.
   compute.
   lia.
 Qed.
 
-Theorem example1_proof: Proof 3 example1_0 example1_2.
+Theorem example1_proof : Proof 3 example1_0 example1_2.
   eapply (p_step 3 example1_0 example1_1 example1_2).
   eapply (p_step 3 example1_0 example1_0 example1_1).
   apply p_id.
