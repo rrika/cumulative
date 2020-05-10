@@ -1858,22 +1858,6 @@ Qed.
 
     Progression: Unvisited -> Visited -> Removed
 *)
-Print nil.
-
-Require Import Coq.Sorting.Mergesort.
-Require Import Orders.
-
-Module TaskReverseLctOrder <: TotalLeBool.
-  Definition t := Activity.
-  Definition leb a b := (a_lct b) <=? (a_lct a).
-  Theorem leb_total : forall a1 a2, (leb a1 a2) = true \/ (leb a2 a1) = true.
-    intros.
-    unfold leb.
-    apply Coq.Sorting.Mergesort.NatOrder.leb_total.
-  Qed.
-End TaskReverseLctOrder.
-
-Module TaskReverseLctSort := Mergesort.Sort TaskReverseLctOrder.
 
 Definition olift (f: nat->nat->nat) (a b: option nat) := match (a, b) with
 | (None, None) => None
@@ -1892,73 +1876,92 @@ Definition olt (a b: option nat) := match (a, b) with
 | _ => True
 end.
 
-Structure Env := envp { vcest: nat; vnrg: nat }.
-Definition evalEnvelope (e: Env) : nat :=
-  match e with envp a b => a+b end.
-Coercion evalEnvelope : Env >-> nat.
+Structure Env := envp { vest: nat; vnrg: nat; vnrg2: nat }.
+Definition evalEnvelope C (e: Env) : nat :=
+  match e with envp a b c => (C*a)+b+c end.
+Definition evalEnvelope2 C (e: option Env) : nat :=
+  match e with Some e => evalEnvelope C e | None => 0 end.
 Definition addToEnvelope (E: Env) (e: nat) :=
-  envp (vcest E) (vnrg E + e).
+  envp (vest E) (vnrg E + e) (vnrg2 E).
+Definition addToEnvelope2 (E: Env) (e: nat) :=
+  envp (vest E) (vnrg E) (vnrg2 E + e).
 
 Declare Scope env_scope.
 Delimit Scope env_scope with e.
 Notation "a + b" := (addToEnvelope a b) : env_scope.
 
-Definition maxEnvelope (x y: Env) : Env :=
-  if x <? y then y else x.
+Definition maxEnvelope C (x y: Env) : Env :=
+  if (evalEnvelope C x) <? (evalEnvelope C y) then y else x.
 
-Definition maxEnvelope3 (x y z: Env) : Env :=
-  maxEnvelope (maxEnvelope x y) z.
+Definition maxEnvelope3 C (x y z: Env) : Env :=
+  maxEnvelope C x (maxEnvelope C y z).
 
 Record ThetaLambdaInner := mkTLInner {
-  tl_teest      : option nat; (* earliest start of a theta task *)
-  tl_tllct      : option nat; (* latest completion of a theta task *)
-  tl_lelct      : option nat; (* earliest latest completion of a lambda task *)
+  tl_teest_tllct : option (nat * nat); (* only present when any theta leaf *)
+  (* tl_teest       : option nat; (* earliest start of a theta task *) *)
+  (* tl_tllct       : option nat; (* latest completion of a theta task *) *)
 
   tl_energy    : nat; (* theta tasks only *)
   tl_envelope  : Env; (* theta tasks only *)
   tl_energyΛ   : nat; (* lambda tasks only *)
-  tl_envelopeΛ : Env; (* theta tasks + a single lambda task *)
+  tl_dataΛ     : option (Env * nat) (* only present when any lambda leaf *)
+  (*tl_envelopeΛ : option Env; (* theta tasks + a single lambda task *) *)
+  (*tl_lelct     : option nat; (* earliest latest completion of a lambda task *) *)
 }.
+
+Definition tl_teest i := match tl_teest_tllct i with Some (a, b) => Some a | None => None end.
+Definition tl_tllct i := match tl_teest_tllct i with Some (a, b) => Some b | None => None end.
+
+Definition tl_envelopeΛ i := match tl_dataΛ i with Some (a, b) => Some a | None => None end.
+Definition tl_lelct i     := match tl_dataΛ i with Some (a, b) => Some b | None => None end.
 
 Definition theta_lambda_leaf_theta (C: nat) (a: Activity) : ThetaLambdaInner :=
   let est := (a_est a) in
   let lct := (a_lct a) in
   let e := (a_c a * a_p a) in
   mkTLInner
-    (* tl_teest     = *) (Some est)
-    (* tl_tllct     = *) (Some lct)
-    (* tl_lelct     = *) None
-    (* tl_energy    = *) e
-    (* tl_envelope  = *) (envp (C*est) e)
-    (* tl_energyΛ   = *) 0
-    (* tl_envelopeΛ = *) (envp 0 0).
+    (* tl_teest_tllct = *) (Some (est, lct))
+    (* tl_energy      = *) e
+    (* tl_envelope    = *) (envp est e 0)
+    (* tl_energyΛ     = *) 0
+    (* tl_dataΛ       = *) None.
 
 Definition theta_lambda_leaf_lambda (C: nat) (a: Activity) : ThetaLambdaInner :=
   let est := (a_est a) in
   let lct := (a_lct a) in
   let e := (a_c a * a_p a) in
   mkTLInner
-    (* tl_teest     = *) None
-    (* tl_tllct     = *) None
-    (* tl_lelct     = *) (Some lct)
-    (* tl_energy    = *) 0
-    (* tl_envelope  = *) (envp 0 0)
-    (* tl_energyΛ   = *) e
-    (* tl_envelopeΛ = *) (envp (C*est) e).
+    (* tl_teest_tllct = *) None
+    (* tl_energy      = *) 0
+    (* tl_envelope    = *) (envp 0 0 0)
+    (* tl_energyΛ     = *) e
+    (* tl_dataΛ       = *) (Some ((envp est 0 e), lct)).
 
-Definition theta_lambda_combine (l: ThetaLambdaInner) (r: ThetaLambdaInner) :=
+Definition theta_lambda_combine C (l: ThetaLambdaInner) (r: ThetaLambdaInner) :=
   mkTLInner
-    (* tl_teest     = *) (omin (tl_teest l) (tl_teest r))
-    (* tl_tllct     = *) (omax (tl_tllct l) (tl_tllct r))
-    (* tl_lelct     = *) (omin (tl_lelct l) (tl_lelct r))
-    (* tl_energy    = *) ((tl_energy l) + (tl_energy r))
-    (* tl_envelope  = *) (maxEnvelope (tl_envelope l) (tl_envelope r))
-    (* tl_energyΛ   = *) ((tl_energyΛ l) + (tl_energyΛ r))
-    (* tl_envelopeΛ = *) (maxEnvelope3
-      ((tl_envelopeΛ l) + (tl_energy  r))
-      ((tl_envelope  r) + (tl_energyΛ r))
-      (tl_envelopeΛ r)
-    )%e.
+    (* tl_teest_tllct = *)
+      match (tl_teest_tllct l, tl_teest_tllct r) with
+      | (Some (eel, lll), Some (eer, llr)) => Some (min eel eer, max lll llr)
+      | (Some (eel, lll), None) => Some (eel, lll)
+      | (None, Some (eer, llr)) => Some (eer, llr)
+      | (None, None) => None
+      end
+    (* tl_energy      = *) ((tl_energy l) + (tl_energy r))
+    (* tl_envelope    = *) (maxEnvelope C (tl_envelope l) (tl_envelope r))
+    (* tl_energyΛ     = *) ((tl_energyΛ l) + (tl_energyΛ r))
+    (* tl_dataΛ       = *) (
+      match (tl_dataΛ l, tl_dataΛ r) with
+      | (Some (el, kl), Some (er, kr)) => Some (maxEnvelope3 C
+          (addToEnvelope el (tl_energy r))
+          (addToEnvelope2 (tl_envelope l) (tl_energyΛ r))
+          er
+        , min kl kr)
+      | (Some (el, kl), None         ) => Some (addToEnvelope el (tl_energy r), kl)
+      | (None,          Some (er, kr)) => Some ((maxEnvelope C
+          (addToEnvelope2 (tl_envelope l) (tl_energyΛ r))
+          er), kr)
+      | (None,          None         ) => None
+      end).
 
 Inductive ThetaLambdaTree (C: nat) : ThetaLambdaInner -> Type :=
 | tlt_theta (i: nat) (a: Activity) :
@@ -1968,7 +1971,7 @@ Inductive ThetaLambdaTree (C: nat) : ThetaLambdaInner -> Type :=
 | tlt_node {li ri}
     (lhs: ThetaLambdaTree C li)
     (rhs: ThetaLambdaTree C ri) :
-    ThetaLambdaTree C (theta_lambda_combine li ri).
+    ThetaLambdaTree C (theta_lambda_combine C li ri).
 
 Fixpoint tl_load_either {C n} (est lct: nat) (x: ThetaLambdaTree C n) :=
 match x with
@@ -1991,19 +1994,76 @@ match x with
 | tlt_node _ lhs rhs => (tl_load_lambda est lct lhs) + (tl_load_lambda est lct rhs)
 end.
 
+Theorem tl_teest_tllct_none_recursive C a b :
+  tl_teest_tllct (theta_lambda_combine C a b) = None ->
+  tl_teest_tllct a = None /\
+  tl_teest_tllct b = None.
+Proof.
+  simpl.
+  intro.
+  destruct (tl_teest_tllct a) as [[eel lll]|];
+  destruct (tl_teest_tllct b) as [[eer llr]|].
+  discriminate H.
+  discriminate H.
+  discriminate H.
+  easy.
+Qed.
+
+Theorem tl_dataΛ_none_recursive C a b :
+  tl_dataΛ (theta_lambda_combine C a b) = None ->
+  tl_dataΛ a = None /\
+  tl_dataΛ b = None.
+Proof.
+  simpl.
+  intro.
+  destruct (tl_dataΛ a) as [[envl lelctl]|];
+  destruct (tl_dataΛ b) as [[envr lelctr]|].
+  discriminate H.
+  discriminate H.
+  discriminate H.
+  easy.
+Qed.
+
 Theorem tl_load_theta_eq {C n} (est lct: nat) (x: ThetaLambdaTree C n) :
   match tl_lelct n with
-  | None => tl_load_theta est lct x = tl_load_either est lct x
-  | _ => True
-  end.
+  | Some lelct => lct < lelct
+  | None       => True
+  end ->
+  tl_load_theta est lct x = tl_load_either est lct x.
 Proof.
-  induction x; simpl.
-  reflexivity.
-  apply I.
-  destruct (tl_lelct li); destruct (tl_lelct ri); simpl; try apply I.
-  rewrite IHx1.
-  rewrite IHx2.
-  reflexivity.
+  induction x; simpl; intro Condition; intros.
+  - easy.
+  - unfold load1.
+    destruct (a_lct a <=? lct) eqn:K.
+    apply Nat.leb_le in K.
+    exfalso.
+    lia.
+    destruct (est <=? a_est a); reflexivity.
+  - enough (
+      match tl_lelct li with
+      | Some lelct => lct < lelct
+      | None => True
+      end /\
+      match tl_lelct ri with
+      | Some lelct => lct < lelct
+      | None => True
+      end).
+    rewrite IHx1 by easy.
+    rewrite IHx2 by easy.
+    reflexivity.
+
+    clear IHx1 IHx2 est x1 x2.
+    unfold tl_lelct in *.
+    destruct (tl_dataΛ li) as [[enl lll]|] eqn:EL;
+    destruct (tl_dataΛ ri) as [[enr llr]|] eqn:ER;
+    [
+    | refine (conj _ I)
+    | refine (conj I _)
+    | easy ]; (
+        unfold theta_lambda_combine in Condition; simpl in *;
+        rewrite EL in Condition;
+        rewrite ER in Condition;
+        clear - Condition; lia).
 Qed.
 
 Theorem tl_load_lambda_eq {C n} (est lct: nat) (x: ThetaLambdaTree C n) :
@@ -2015,7 +2075,10 @@ Proof.
   induction x; simpl.
   apply I.
   reflexivity.
-  destruct (tl_tllct li); destruct (tl_tllct ri); simpl; try apply I.
+  unfold tl_tllct in *.
+  simpl.
+  destruct (tl_teest_tllct li) as [[eel lll]|];
+    destruct (tl_teest_tllct ri) as [[eer llr]|]; simpl; try apply I.
   rewrite IHx1.
   rewrite IHx2.
   reflexivity.
@@ -2046,33 +2109,172 @@ match x with
   end
 end.
 
-Fixpoint tl_pop_max_env {C n} (x: ThetaLambdaTree C n) :
-  option (nat * A * option {n : ThetaLambdaInner & ThetaLambdaTree C n }) :=
-match x with
-| tlt_theta _ i a  => None
-| tlt_lambda _ i a => Some (i, a, None)
-| @tlt_node _ nl nr lhs rhs =>
-  match (if (tl_envelopeΛ nr <? tl_envelopeΛ nl) then
-    match tl_pop_max_env lhs with
-    | None           => (None,        None, Some (existT _ _ rhs))
-    | Some (i, a, k) => (Some (i, a), k,    Some (existT _ _ rhs))
+
+Definition argMaxEnvelope C (x y: Env) {A} (t u: A) : A :=
+  if (evalEnvelope C x) <? (evalEnvelope C y) then u else t.
+
+Definition argMaxEnvelope3 C (x y z: Env) {A} (t u v : A) : A :=
+  let yz :=    maxEnvelope C y z in
+  let uv := argMaxEnvelope C y z u v in
+  argMaxEnvelope C x yz t uv.
+
+Inductive LR : Type :=
+| ll
+| rr.
+
+Inductive Path {C: nat} {leaf_inner} {leaf_node: ThetaLambdaTree C leaf_inner} :
+  forall root_inner (root_node: ThetaLambdaTree C root_inner), Type :=
+| tp_leaf :
+    Path leaf_inner leaf_node
+| tp_left {nl nr lhs rhs} :
+    Path nl lhs ->
+    Path (theta_lambda_combine C nl nr) (tlt_node C lhs rhs)
+| tp_right {nl nr lhs rhs} :
+    Path nr rhs ->
+    Path (theta_lambda_combine C nl nr) (tlt_node C lhs rhs).
+
+Fixpoint path_simplify {C: nat} {leafn leaft rootn roott}
+  (tpl: @Path C leafn leaft rootn roott) :
+  list LR
+:=
+  match tpl with
+  | tp_leaf => nil
+  | tp_left subpath => (cons ll (path_simplify subpath))
+  | tp_right subpath => (cons rr (path_simplify subpath))
+  end.
+
+Definition is_leaf {C n} (x: ThetaLambdaTree C n) := match x with
+  | tlt_theta _ _ _ => true
+  | tlt_lambda _ _ _=> true
+  | tlt_node _ _ _ => false
+  end.
+
+Fixpoint tl_remove_path {C}
+  {leafn leafx rootn} rootx
+  (p: @Path C leafn leafx rootn rootx) :
+  option {n : ThetaLambdaInner & ThetaLambdaTree C n }
+:=
+  match p with
+  | tp_leaf => None
+  | @tp_left _ _ _ l r lhs rhs subpath =>
+    match tl_remove_path lhs subpath with
+    | Some (existT _ newl newlhs) =>
+      Some (existT _ _ (@tlt_node C newl r newlhs rhs))
+    | None =>
+      Some (existT _ r rhs)
     end
-  else
-    match tl_pop_max_env lhs with
-    | None           => (None,        Some (existT _ _ lhs), None)
-    | Some (i, a, k) => (Some (i, a), Some (existT _ _ lhs), k)
-    end)
-  with
-  | (None,        _,             _            ) => None
-  | (Some (i, a), None,          z            ) => Some (i, a, z)
-  | (Some (i, a), y,             None         ) => Some (i, a, y)
-  | (Some (i, a), Some y,        Some z       ) => Some (i, a, Some (
-    existT _ _ (tlt_node C
-      (projT2 y)
-      (projT2 z)
-    )))
+  | @tp_right _ _ _ l r lhs rhs subpath =>
+    match tl_remove_path rhs subpath with
+    | Some (existT _ newr newrhs) =>
+      Some (existT _ _ (@tlt_node C l newr lhs newrhs))
+    | None =>
+      Some (existT _ l lhs)
+    end
+  end.
+
+Definition tl_max_env_side C l r :=
+  match (tl_dataΛ l, tl_dataΛ r) with
+  | (Some (el, kl), Some (er, kr)) => (argMaxEnvelope3 C
+      (*x*) (addToEnvelope el (tl_energy r))
+      (*y*) (addToEnvelope2 (tl_envelope l) (tl_energyΛ r))
+      (*z*) er
+      (*t*) ll
+      (*u*) rr
+      (*v*) rr)
+  | (Some _, None) => ll
+  | (None, Some _) => rr
+  | (None, None) => (*any*) ll
+  end.
+
+Fixpoint tl_pop_max_env_path {C n} (x: ThetaLambdaTree C n) :
+  list LR :=
+match x with
+| tlt_theta _ i a  => nil
+| tlt_lambda _ i a => nil
+| @tlt_node _ l r lhs rhs =>
+  match tl_max_env_side C l r with
+  | ll => (cons ll (tl_pop_max_env_path lhs))
+  | rr => (cons rr (tl_pop_max_env_path rhs))
   end
 end.
+
+Theorem tl_pop_max_env_path_2 {C n} (t: ThetaLambdaTree C n) :
+  {ln : ThetaLambdaInner & {lx : ThetaLambdaTree C ln & @Path C ln lx n t } }.
+Proof.
+  pose (tl_pop_max_env_path t) as l.
+  induction t; simpl in l.
+  refine (existT _ _ (existT _ _ tp_leaf)).
+  refine (existT _ _ (existT _ _ tp_leaf)).
+  destruct (tl_max_env_side C li ri); [
+    destruct IHt1 as [ln [lx subp]] |
+    destruct IHt2 as [ln [lx subp]]
+  ];
+  refine (existT _ _ (existT _ _ _)).
+  apply tp_left.
+  apply subp.
+  apply tp_right.
+  apply subp.
+Qed.
+
+Fixpoint tl_pop_max_env {C n} (x: ThetaLambdaTree C n) :
+  {n : ThetaLambdaInner & ThetaLambdaTree C n } :=
+match x with
+| tlt_theta _ i a  => existT _ _ x
+| tlt_lambda _ i a => existT _ _ x
+| @tlt_node _ l r lhs rhs =>
+  let descendLeft :
+    {n : ThetaLambdaInner & ThetaLambdaTree C n }
+  :=
+    match tl_pop_max_env lhs with
+    | existT _ newl newlhs =>
+      existT _ _ (@tlt_node C newl r newlhs rhs)
+    end
+  in
+  let descendRight :
+    {n : ThetaLambdaInner & ThetaLambdaTree C n }
+  :=
+    match tl_pop_max_env rhs with
+    | existT _ newr newrhs =>
+      existT _ _ (@tlt_node C l newr lhs newrhs)
+    end
+  in
+  match (tl_dataΛ l, tl_dataΛ r) with
+  | (Some (el, kl), Some (er, kr)) => (argMaxEnvelope3 C
+      (*x*) (addToEnvelope el (tl_energy r))
+      (*y*) (addToEnvelope2 (tl_envelope l) (tl_energyΛ r))
+      (*z*) er
+      (*t*) descendLeft
+      (*u*) descendRight
+      (*v*) descendRight
+    )
+  | (Some (el, kl), None         ) => descendLeft
+  | (None,          Some (er, kr)) => descendRight
+  | (None,          None         ) => existT _ _ x
+  end
+end.
+
+
+(*Theorem tl_pop_max_env_some {C n} (x: ThetaLambdaTree C n) :
+  tl_pop_max_env x <> None ->
+  match x with
+  | tlt_theta _ i a  => True
+  | tlt_lambda _ i a => True
+  | @tlt_node _ nl nr lhs rhs =>
+    if (
+      evalEnvelope2 C (tl_envelopeΛ nr) <?
+      evalEnvelope2 C (tl_envelopeΛ nl)
+    ) then
+      tl_pop_max_env lhs <> None
+    else
+      tl_pop_max_env rhs <> None
+  end.
+Proof.
+  intro; destruct x; try easy.
+  simpl in H.
+  destruct (evalEnvelope2 C (tl_envelopeΛ ri) <? evalEnvelope2 C (tl_envelopeΛ li)).
+  now destruct (tl_pop_max_env x1).
+  now destruct (tl_pop_max_env x2).
+Qed.*)
 
 Inductive Interleave {A} (*DropOk: A -> Prop*) : list A -> list A -> list A -> Type :=
 | s_nil           : Interleave (*DropOk*) nil nil nil
@@ -2083,11 +2285,6 @@ Inductive Interleave {A} (*DropOk: A -> Prop*) : list A -> list A -> list A -> T
 Definition tl_llct_prop (tl: ThetaLambdaInner) (a:A) :=
   match (tl_tllct tl) with Some llct => a_lct a <= llct | _ => True end.
 
-Inductive Sublist {A} : list A -> list A -> Type :=
-| sl_nil        : Sublist nil nil
-| sl_skip a b c : Sublist b c -> Sublist b (a::c)
-| sl_cons a b c : Sublist b c -> Sublist (a::b) (a::c).
-
 Inductive TLT2 {C} : AA -> forall {n}, ThetaLambdaTree C n -> Type :=
 | tlt2_theta  i a : TLT2 (cons a nil) (tlt_theta  C i a)
 | tlt2_lambda i a : TLT2 (cons a nil) (tlt_lambda C i a)
@@ -2097,7 +2294,7 @@ Inductive TLT2 {C} : AA -> forall {n}, ThetaLambdaTree C n -> Type :=
   TLT2 la lhs ->
   TLT2 ra rhs ->
   Interleave (*tl_llct_prop (theta_lambda_combine li ri)*) la ra a ->
-  olt (tl_tllct (theta_lambda_combine li ri)) (tl_lelct (theta_lambda_combine li ri)) ->
+  olt (tl_tllct (theta_lambda_combine C li ri)) (tl_lelct (theta_lambda_combine C li ri)) ->
   TLT2 a (tlt_node C lhs rhs).
 
 Theorem TLT2_tllct_lt_lelct {C aa n t} (tl2: @TLT2 C aa n t) :
@@ -2208,19 +2405,6 @@ Qed.
   (I: TLT2 g (tlt_node C c d))
   (J: I = tlt2_node e f h) : g = h.*)
 
-Theorem bleh {A} (a:A) b c d : (a::nil) = b++(c::d) -> a=c /\ b=nil /\ d=nil.
-Proof.
-  intro.
-  destruct b; simpl.
-  inversion H.
-  auto.
-  inversion H.
-  destruct b; simpl.
-  inversion H2.
-  simpl in H2.
-  inversion H2.
-Qed.
-
 Theorem interleave_right {A a b} : @Interleave A nil a b -> a=b.
 Proof.
   intro.
@@ -2250,112 +2434,6 @@ Proof.
   apply IHa.
   apply X0.
 Qed.
-
-(*Definition tlt2_interleave_prefix {C} (aa_rest aa_prefix: AA)
-  {tli: ThetaLambdaInner} (tl: ThetaLambdaTree C tli) :
-  TLT2 (aa_rest ++ aa_prefix) tl -> (aa_prefix <> nil) ->
-  {tli: ThetaLambdaInner & {n: ThetaLambdaTree C tli & TLT2 aa_prefix n } }.
-Proof.
-  intro.
-  remember (aa_rest ++ aa_prefix) as aa.
-  generalize dependent aa_prefix.
-  generalize dependent aa_rest.
-  induction H eqn:W; intros.
-
-  eexists _.
-  exists (tlt_theta C i a).
-  destruct aa_prefix eqn:X.
-  exfalso.
-  apply (H0 eq_refl).
-
-  inversion Heqaa.
-  destruct (bleh a aa_rest a0 a1 H2) as [aa0 [aa_rest_nil a1_nil]].
-  subst aa_rest.
-  subst a1.
-  subst a0.
-  assumption.
-
-  eexists _.
-  exists (tlt_lambda C i a).
-  destruct aa_prefix eqn:X.
-  exfalso.
-  apply (H0 eq_refl).
-
-  inversion Heqaa.
-  destruct (bleh a aa_rest a0 a1 H2) as [aa0 [aa_rest_nil a1_nil]].
-  subst aa_rest.
-  subst a1.
-  subst a0.
-  assumption.
-
-  specialize (IHt1 t1 eq_refl).
-  specialize (IHt2 t2 eq_refl).
-  pose proof (interleave_prefix la ra aa_rest aa_prefix) as Z.
-  destruct Z.
-  rewrite <- Heqaa.
-  apply i.
-  specialize (IHt1 xs xp e).
-  specialize (IHt2 ys yp e0).
-
-  destruct xp.
-  destruct yp.
-
-  (* impossible case *)
-  exfalso.
-  generalize H0 i0.
-  clear; intros.
-  inversion i0.
-  symmetry in H2.
-  apply (H0 H2).
-
-  (* lhs empty *)
-  clear IHt1.
-  especialize IHt2.
-  intro.
-  inversion H1.
-  destruct IHt2 as [nr [nrtl1 nrtl2]].
-  exists nr.
-  exists nrtl1.
-  replace (aa_prefix) with (a0::yp).
-  assumption.
-  rewrite (interleave_right i0).
-  reflexivity.
-
-  destruct yp.
-  (* rhs empty *)
-  clear IHt2.
-  especialize IHt1.
-  intro.
-  inversion H1.
-  destruct IHt1 as [nl [nltl1 nltl2]].
-  exists nl.
-  exists nltl1.
-  replace (aa_prefix) with (a0::xp).
-  assumption.
-  rewrite (interleave_left i0).
-  reflexivity.
-
-  (* both children *)
-  especialize IHt1.
-  intro.
-  inversion H1.
-  especialize IHt2.
-  intro.
-  inversion H1.
-  generalize dependent H0.
-  destruct IHt1 as [nl [nltl1 nltl2]].
-  destruct IHt2 as [nr [nrtl1 nrtl2]].
-  exists (theta_lambda_combine nl nr).
-  exists (tlt_node C nltl1 nrtl1).
-  apply (tlt2_node nltl2 nrtl2).
-  apply i0.
-Qed.*)
-
-
-(*Definition tlt2_interleave_prefix {C} (aa_rest aa_prefix: AA)
-  {tli: ThetaLambdaInner} (tl: ThetaLambdaTree C tli) :
-  TLT2 (aa_rest ++ aa_prefix) tl -> (aa_prefix <> nil) ->
-  {tli: ThetaLambdaInner & {n: ThetaLambdaTree C tli & TLT2 aa_prefix n } }. *)
 
 Theorem interleave_load {la ra a} (i : Interleave la ra a) (est lct: nat) :
   (load la est lct) + (load ra est lct) = load a est lct.
@@ -2414,7 +2492,7 @@ Proof.
   auto.
   inversion H; subst.
   auto.
-  inversion H0; subst.
+  inversion H0; subst.  
   auto.
 Qed.
 
@@ -2508,24 +2586,27 @@ Proof.
 
   simpl in *.
   destruct H as [[lelct [H H1]]|H].
-  destruct (tl_lelct li) as [lelct_li|];
-  destruct (tl_lelct ri) as [lelct_ri|];
-  inversion H; 
-  (rewrite IHt2_1; [rewrite IHt2_2; [reflexivity|]|]);
-  clear - H1 H2;
-  [left|left|right|left|left|right]; try reflexivity;
-  [exists lelct_ri|exists lelct_li|exists lelct_li|exists lelct_ri];
-  (constructor; [reflexivity|]); lia.
-
-
-  pose proof (tl_load_theta_eq est lct lhs) as EL.
-  pose proof (tl_load_theta_eq est lct rhs) as ER.
-  destruct (tl_lelct li) as [lelct_li|];
-  destruct (tl_lelct ri) as [lelct_ri|];
-  inversion H.
-  rewrite EL.
-  rewrite ER.
-  reflexivity.
+  - unfold tl_lelct in *.
+    unfold theta_lambda_combine in H.
+    destruct (tl_dataΛ li) as [[env_li lelct_li]|];
+    destruct (tl_dataΛ ri) as [[env_ri lelct_ri]|];
+    inversion H; 
+    (rewrite IHt2_1; [rewrite IHt2_2; [reflexivity|]|]);
+    clear - H1 H2;
+    [left|left|right|left|left|right]; try reflexivity;
+    [exists lelct_ri|exists lelct_li|exists lelct_li|exists lelct_ri];
+    refine (conj eq_refl _); lia.
+  - unfold theta_lambda_combine in H.
+    pose proof (tl_load_theta_eq est lct lhs) as EL.
+    pose proof (tl_load_theta_eq est lct rhs) as ER.
+    unfold tl_lelct in *.
+    destruct (tl_dataΛ li) as [[env_li lelct_li]|];
+    destruct (tl_dataΛ ri) as [[env_ri lelct_ri]|];
+    simpl in H;
+    inversion H.
+    rewrite EL by apply I.
+    rewrite ER by apply I.
+    reflexivity.
 Qed.
 
 Theorem tl_load_theta_bump
@@ -2561,8 +2642,10 @@ Proof.
 
   destruct H as [[tllct [H [H1 H2]]]|].
   simpl in *.
-  destruct (tl_tllct li) as [tllct_li|];
-  destruct (tl_tllct ri) as [tllct_ri|];
+  unfold tl_tllct in *.
+  unfold theta_lambda_combine in H.
+  destruct (tl_teest_tllct li) as [[teest_li tllct_li]|];
+  destruct (tl_teest_tllct ri) as [[teest_ri tllct_ri]|];
   inversion H; clear H;
   (rewrite <- IHx1; [rewrite <- IHx2; [reflexivity|]|]);
   [left|left|right|left|left|right]; try reflexivity;
@@ -2570,12 +2653,13 @@ Proof.
   (constructor; try reflexivity); lia.
 
   simpl in *.
-  destruct (tl_tllct li) as [tllct_li|];
-  destruct (tl_tllct ri) as [tllct_ri|];
+  unfold tl_tllct in *.
+  unfold theta_lambda_combine in H.
+  destruct (tl_teest_tllct li) as [[teest_li tllct_li]|];
+  destruct (tl_teest_tllct ri) as [[teest_ri tllct_ri]|];
   inversion H; clear H.
   rewrite <- IHx1; [rewrite <- IHx2|]; [|right|right]; reflexivity.
 Qed.
-
 
 Theorem tl_theta_load_wiggle {X C n} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
   (est: nat) :
@@ -2616,10 +2700,10 @@ Theorem tl_pop_max_env_load {X C n} {x: ThetaLambdaTree C n} (t2: TLT2 X x) :
   | Some llct =>
     match (tl_pop_max_env x) with
     | Some (i, a, Some y) =>
-      match tl_envelopeΛ n with envp vcest vnrg =>
+      match tl_envelopeΛ n with envp vest vnrg =>
         let c  := a_c a in 
         let p  := a_p a in 
-        tl_load_either vcest llct x + c*p = vnrg
+        tl_load_either vest llct x + c*p = vnrg
       end
     | _ => True
     end
@@ -2650,89 +2734,586 @@ Proof.
   destruct (tl_tllct ri) as [llct_ri|] eqn:LCTR; [|
     set (info2 := "no elements left in rhs" % string); move info2 at top].
 *)
-Theorem tl_pop_max_env_load {X C n} {x: ThetaLambdaTree C n} (t2: TLT2 X x) :
-  match (tl_tllct n) with
-  | Some llct =>
-    match (tl_pop_max_env x) with
-    | Some (i, a, Some y) =>
-      match tl_envelopeΛ n with envp vcest vnrg =>
-        let c  := a_c a in 
-        let p  := a_p a in 
-        load X vcest llct + c*p = vnrg
-      end
-    | _ => True
-    end
-  | None => True
-  end.
+
+
+(*
+Theorem tl_pop_max_env_load_simplified {X C n} {x: ThetaLambdaTree C n}
+  (t2: TLT2 X x) lct vest vnrg vnrg2 lelct :
+  lct < lelct ->
+  tl_dataΛ n = Some ((envp vest vnrg vnrg2), lelct) ->
+  tl_load_theta vest lct x = vnrg.
 Proof.
-  set (t2_ := t2).
-  dependent induction t2.
-  simpl; auto.
-  simpl; auto.
-  rename a into lra.
-  replace (tl_tllct (theta_lambda_combine li ri))
-     with (omax (tl_tllct li) (tl_tllct ri))
-       by auto.
-  destruct (tl_tllct li) as [llct_li|] eqn:LCTL; [|
-    set (info1 := "no elements left in lhs" % string); move info1 at top].
-  destruct (tl_tllct ri) as [llct_ri|] eqn:LCTR; [|
-    set (info2 := "no elements left in rhs" % string); move info2 at top].
-  replace (omax (Some llct_li) (Some llct_ri)) with (Some (max llct_li llct_ri)).
-  destruct (tl_pop_max_env lhs) as [[[l2i l2a] [l2|]]|] eqn:R3.
-  destruct (tl_envelopeΛ li) as [lvcest lvnrg].
-  destruct (tl_pop_max_env rhs) as [[[r2i r2a] [r2|]]|] eqn:R5.
-  destruct (tl_envelopeΛ ri) as [rvcest rvnrg].
-  simpl.
-  destruct (tl_envelopeΛ ri <? tl_envelopeΛ li) eqn:EnvΛLR.
-  apply Nat.ltb_lt in EnvΛLR.
-  rewrite R3.
-  remember (maxEnvelope3 (tl_envelopeΛ li + tl_energy ri)%e
-    (tl_envelope ri + tl_energyΛ ri)%e (tl_envelopeΛ ri)) as kenv.
-  enough (
-    kenv = (tl_envelopeΛ li + tl_energy ri)%e \/
-    kenv = (tl_envelope ri + tl_energyΛ ri)%e \/
-    kenv = (tl_envelopeΛ ri)).
-  destruct H as [HenvΛ|[HenvΛ|HenvΛ]];
-  clear Heqkenv;
-  subst kenv;
-  simpl.
-
-
-  - generalize dependent i.
-
-  dependent induction i; [
-    set (info3 := "interleave induction: nil" % string)|
-    set (info3 := "interleave induction: left (a::x) (a::z)" % string)|
-    set (info3 := "interleave induction: right (a::y) (a::z)" % string)
-    (*set (info3 := "interleave induction: drop (a::z)" % string)*)];
-    move info3 at top.
-  simpl.
-  exfalso.
-  apply (TLT2_nil t2_1).
-  move t2_1 at bottom.
-  move t2_2 at bottom.
-  move IHt2_1 at bottom.
-  move IHt2_2 at bottom.
-  simpl.
-  unfold load.
-  unfold mapfold.
+  induction t2; simpl; auto.
+  destruct (maxEnvelopeO3Either
+    (addToEnvelope3 (tl_envelopeΛ li) (tl_energy ri))
+    (addToEnvelope2 (tl_envelope ri) (tl_energyΛ ri)) 
+    (tl_envelopeΛ ri)) as [H|[H|H]]; rewrite H; clear H.
+  destruct li.
+  destruct ri.
+  destruct tl_envelopeΛ0.
+  destruct tl_envelopeΛ1.
+  destruct e.
+  destruct e0.
   simpl in *.
-  (* goal:
-    load (a :: z) (vcest (tl_envelopeΛ li)) (max n n0) + a_c l2a * a_p l2a =
-    C * vcest (tl_envelopeΛ li) + (vnrg (tl_envelopeΛ li) + tl_energy ri)
-  *)
-
-
-  dependent induction i.
-  exfalso.
+  destruct tl_tllct0.
+  destruct tl_tllct1.
   simpl in *.
-  simpl in *.
-  dependent induction i; intros.
-  simpl.
+Admitted.
 
+Theorem tl_can_pop_has_data {C nf} {x: ThetaLambdaTree C nf} :
+  tl_dataΛ nf <> None <-> tl_pop_max_env x <> None.
+Proof.
+  induction x; simpl; intros.
+  constructor; contradiction.
+  constructor; intros A B; discriminate B.
+  destruct IHx1.
+  destruct IHx2.
+  unfold tl_envelopeΛ.
+  destruct (tl_dataΛ li) as [[dle dlj]|]; destruct (tl_pop_max_env x1);
+    [|exfalso; now apply H|exfalso; now apply H0|];
+  (destruct (tl_dataΛ ri) as [[dre drj]|]; destruct (tl_pop_max_env x2);
+    [|exfalso; now apply H1|exfalso; now apply H2|]);
+  (constructor; intro Z; [clear Z| try (clear; easy)]).
+  - destruct (evalEnvelope2 C (Some dre) <? evalEnvelope2 C (Some dle)).
+    destruct p  as [[pi pa] po]. destruct po; easy.
+    destruct p0 as [[pi pa] po]. destruct po; easy.
+  - simpl.
+     destruct (evalEnvelope2 C (tl_envelopeΛ ri) <? evalEnvelope2 C (tl_envelopeΛ li)) eqn:B.
+    destruct p  as [[pi pa] po]. destruct po; easy.
+    
+    destruct p0 as [[pi pa] po]. destruct po; easy.
+    
 
-  destruct (tl_pop_max_env (tlt_node C lhs rhs)); [|auto].
+    simpl; destruct p; destruct p; destruct o; easy.
+    simpl; destruct p0.
+    simpl; destruct p; destruct p; destruct o; easy.  
+  admit.
+  admit.
+  admit.
+  admit.
+  admit.
+Admitted.*)
 
-  simpl.
+Compute 0.
+
+(*
+
+Inductive Update (c p: nat) (oe ol: nat) (ne nl: nat) : AA -> AA -> Type :=
+| u1 a xs ys : Update c p oe ol ne nl xs ys ->
+               Update c p oe ol ne nl (cons a xs) (cons a ys)
+| u0 s       : Update c p oe ol ne nl 
+                  (cons (mkActivity oe ol c p) s)
+                  (cons (mkActivity ne nl c p) s).
+*)
+
+Record SingleUpdate := mkSu {
+  su_c : nat;
+  su_p : nat;
+  su_oe : nat;
+  su_ol : nat;
+  su_ne : nat;
+  su_nl : nat;
+}.
+
+Definition u0m (c p oe ol ne nl : nat) (a b: A) (s: AA) :
+  a = (mkActivity oe ol c p) ->
+  b = (mkActivity ne nl c p) ->
+  Update c p oe ol ne nl (cons a s) (cons b s).
+Proof.
+  intros HA HB.
+  rewrite HA.
+  rewrite HB.
+  apply u0.
 Qed.
 
+Theorem TLT2_X_of_lambda {X C i a} (t: TLT2 X (tlt_lambda C i a)) :
+  X = (cons a nil).
+Proof.
+  inversion t.
+  reflexivity.
+Qed.
+
+Definition update_single_for_overload_lct (a: Activity) (overload_lct: nat) :=
+  mkActivity (a_est a) (overload_lct + (a_p a) - 1) (a_c a) (a_p a).
+
+Fixpoint interleave_replace_left {A} (X1 X2 Y Z: list A)
+  (i: Interleave X1 Y Z) : list A :=
+match i with
+| s_nil  => nil
+| s_left a x y z s =>
+  match X2 with
+  | (cons a2 x2) => (a2 :: interleave_replace_left _ x2 y z s)
+  | _ => nil (* not enough replacements *)
+  end
+| s_right a x y z s => (a :: interleave_replace_left _ X2 y z s)
+end.
+
+Theorem interleave_replace_left_nop {A} (X Y Z: list A)
+  (i: Interleave X Y Z) :
+  interleave_replace_left X X Y Z i = Z.
+Proof.
+  induction i; auto.
+  all: simpl; rewrite IHi; reflexivity.
+Qed.
+
+Theorem interleave_replace_left_spec {A} (X1 X2 Y Z: list A) 
+  (i: Interleave X1 Y Z) :
+  List.length X1 = List.length X2 ->
+  Interleave X2 Y (interleave_replace_left X1 X2 Y Z i).
+Proof.
+  intros.
+  generalize dependent X2.
+  induction i; intros.
+  - simpl in *.
+    destruct X2.
+    apply s_nil.
+    discriminate H.
+  - destruct X2; simpl in H.
+    discriminate H.
+    inversion H.
+    simpl.
+    specialize (IHi X2 H1).
+    apply s_left.
+    apply IHi.
+  - simpl.
+    apply s_right.
+    apply IHi.
+    apply H.
+Qed.
+
+Fixpoint interleave_replace_right {A} (X Y1 Y2 Z: list A)
+  (i: Interleave X Y1 Z) : list A :=
+match i with
+| s_nil  => nil
+| s_right a x y z s =>
+  match Y2 with
+  | (cons a2 y2) => (a2 :: interleave_replace_right x _ y2 z s)
+  | _ => nil (* not enough replacements *)
+  end
+| s_left a x y z s => (a :: interleave_replace_right x _ Y2 z s)
+end.
+
+Theorem interleave_replace_right_nop {A} (X Y Z: list A)
+  (i: Interleave X Y Z) :
+  interleave_replace_right X Y Y Z i = Z.
+Proof.
+  induction i; auto.
+  all: simpl; rewrite IHi; reflexivity.
+Qed.
+
+Theorem update_left
+  {X XL YL R}
+  {c p oe ol ne nl}
+  (i : Interleave XL R X) : 
+  Update c p oe ol ne nl XL YL ->
+  Update c p oe ol ne nl X (interleave_replace_left XL YL R X i).
+Proof.
+  generalize dependent YL.
+  induction i; intros.
+  - inversion H.
+  - inversion H; subst.
+    + apply u1.
+      apply IHi.
+      apply H3.
+    + simpl in *.
+      rewrite interleave_replace_left_nop.
+      apply u0.
+  - simpl.
+    apply u1.
+    apply IHi.
+    apply H.
+Qed.
+
+Theorem update_right
+  {X L XR YR}
+  {c p oe ol ne nl}
+  (i : Interleave L XR X) : 
+  Update c p oe ol ne nl XR YR ->
+  Update c p oe ol ne nl X (interleave_replace_right L XR YR X i).
+Proof.
+  generalize dependent YR.
+  induction i; intros.
+  - inversion H.
+  - simpl.
+    apply u1.
+    apply IHi.
+    apply H.
+  - inversion H; subst.
+    + apply u1.
+      apply IHi.
+      apply H3.
+    + simpl in *.
+      rewrite interleave_replace_right_nop.
+      apply u0.
+Qed.
+
+Theorem update_by_tl_pop
+  {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x) (overload_lct: nat)
+:
+  tl_dataΛ n = Some e ->
+  { su : SingleUpdate & { Y : AA & (prod 
+    (su_ol su = su_nl su)
+    (Update (su_c su)  (su_p su)
+            (su_oe su) (su_ol su)
+            (su_ne su) (su_nl su)
+     X Y)
+  ) } }.
+Proof.
+  generalize dependent e.
+  induction t2; intros; simpl in *.
+  (* theta *)
+  - discriminate H.
+  (* lambda *)
+  - (* a is the select lambda task *)
+    set (mkActivity
+      (overload_lct + (a_p a) - 1)
+      (a_lct a)
+      (a_c a)
+      (a_p a)
+    ) as b.
+    set (mkSu
+      (a_c a)
+      (a_p a)
+      (a_est a)
+      (a_lct a)
+      (a_est b)
+      (a_lct b)
+    ) as su.
+    exists su.
+    exists (cons b nil).
+    refine (eq_refl, _).
+    apply u0m.
+    destruct a; reflexivity.
+    unfold b; reflexivity.
+
+  (* inner node *)
+  - destruct (tl_dataΛ li) as [[el el_]|] eqn:B1;
+    destruct (tl_dataΛ ri) as [[er er_]|] eqn:B2;
+    subst.
+    specialize (IHt2_1 (el, el_) eq_refl).
+    specialize (IHt2_2 (er, er_) eq_refl).
+
+    unfold maxEnvelope3 in H.
+    unfold maxEnvelope in H.
+
+    destruct (evalEnvelope C (el + tl_energy ri)%e <?
+        evalEnvelope C
+          (if
+            evalEnvelope C
+              (addToEnvelope2 (tl_envelope li) (tl_energyΛ ri)) <?
+            evalEnvelope C er
+           then er
+           else addToEnvelope2 (tl_envelope li) (tl_energyΛ ri))).
+    (* both sides have Λ, right side wins *)
+    clear IHt2_1.
+    destruct IHt2_2 as [su [YR [YE YU]]].
+    exists su.
+    exists (interleave_replace_right la ra YR a i).
+    refine (YE, _).
+    apply update_right.
+    apply YU.
+    (* both sides have Λ, left side wins *)
+    clear IHt2_2.
+    destruct IHt2_1 as [su [XL [XE XU]]].
+    exists su.
+    exists (interleave_replace_left la XL ra a i).
+    refine (XE, _).
+    apply update_left.
+    apply XU.
+    (* left side has Λ *)
+    clear IHt2_2.
+    specialize (IHt2_1 (el, el_) eq_refl).
+    destruct IHt2_1 as [su [XL [XE XU]]].
+    exists su.
+    exists (interleave_replace_left la XL ra a i).
+    refine (XE, _).
+    apply update_left.
+    apply XU.
+    (* right side has Λ *)
+    clear IHt2_1.
+    specialize (IHt2_2 (er, er_) eq_refl).
+    destruct IHt2_2 as [su [YR [YE YU]]].
+    exists su.
+    exists (interleave_replace_right la ra YR a i).
+    refine (YE, _).
+    apply update_right.
+    apply YU.
+    (* contradiction *)
+    discriminate H.
+Qed.
+
+Theorem extend_proof_by_tl_pop
+  {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
+  {K} (baseproof: Proof C K X)
+:
+  tl_dataΛ n = Some e (*(env, lelct)*) ->
+  (* vnrg env + vnrg2 vnrg > C * (lelct - vest env) -> *)
+  { Y : AA & Proof C K Y }.
+Proof.
+  intro.
+  destruct e as [[vest vnrg vnrg2] tllct].
+  destruct (update_by_tl_pop t2 tllct H) as [[c p oe ol ne nl] [Y [m update]]].
+  simpl in *.
+
+  destruct (ne + p <=? ol) eqn:U;
+    relb_to_rel.
+  destruct (C * (ne + p - 1 - oe) <? load X oe (ne + p - 1) + c * p) eqn:B;
+    relb_to_rel.
+
+  exists Y.
+  rewrite <- m in update.
+  apply (p_step C K X Y
+    c p oe ne ol
+    baseproof
+    update).
+  apply ps_tighten_est_plain.
+  apply B.
+  apply U.
+
+  (* not actually overloaded, return input unmodified *)
+  exists X.
+  exact baseproof.
+
+  (* this set of tasks isn't schedulable, the chosen
+     task was reduced to less than its minimum time.
+     the Proof datatype currently doesn't have a good
+     way of encoding this, so return input unmodified *)
+  exists X.
+  exact baseproof.
+Qed.
+
+Theorem proofstep_by_tl_pop
+  {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
+:
+  tl_dataΛ n = Some e ->
+  option { c : nat &
+  { p : nat &
+  { oe : nat &
+  { ne : nat &
+  { l : nat &
+  { Y : AA &
+    prod
+    (Update c p oe l ne l X Y)
+    (ProofStep C X c p oe ne l)
+  } } } } } }.
+Proof.
+  intro.
+  destruct e as [[vest vnrg vnrg2] tllct].
+  destruct (update_by_tl_pop t2 tllct H) as [[c p oe ol ne nl] [Y [m update]]].
+  simpl in *.
+
+  destruct (ne + p <=? ol) eqn:U;
+    relb_to_rel.
+  destruct (C * (ne + p - 1 - oe) <? load X oe (ne + p - 1) + c * p) eqn:B;
+    relb_to_rel.
+  apply Some.
+
+  exists c.
+  exists p.
+  exists oe.
+  exists ne.
+  exists ol.
+  exists Y.
+  rewrite <- m in update.
+  refine ((update, _)).
+  apply ps_tighten_est_plain.
+  apply B.
+  apply U.
+
+  (* not actually overloaded *)
+  apply None.
+
+  (* this set of tasks isn't schedulable, the chosen
+     task was reduced to less than its minimum time.
+     the Proof datatype currently doesn't have a good
+     way of encoding this *)
+  apply None.
+Qed.
+
+Theorem proofstep_over_subset
+  {X XO XT YT C}
+  (c p oe ne l : nat)
+  (i: Interleave XT XO X)
+:
+  Update c p oe l ne l XT YT ->
+  ProofStep C XT c p oe ne l ->
+  prod
+    (Update c p oe l ne l X (interleave_replace_left XT YT XO X i))
+    (ProofStep C X c p oe ne l).
+Proof.
+  intros.
+  destruct H0; (constructor; [apply update_left; apply H|]).
+  - apply ps_tighten_est_plain.
+    pose proof (interleave_load i oe (ne + p - 1)).
+    lia.
+    assumption.
+  - (* ps_tighten_est_partial *)
+    apply (ps_tighten_est_partial) with (xe:=xe) (xl:=xl) (nep:=nep); auto.
+    pose proof (interleave_load i xe xl).
+    lia.
+Qed.
+
+Require Import Coq.Sorting.Mergesort.
+Require Import Coq.Sorting.Permutation.
+Require Import Orders.
+
+Module TaskReverseLctOrder <: TotalLeBool.
+  Definition t := Activity.
+  Definition leb a b := (a_lct b) <=? (a_lct a).
+  Theorem leb_total : forall a1 a2, (leb a1 a2) = true \/ (leb a2 a1) = true.
+    intros.
+    unfold leb.
+    apply Coq.Sorting.Mergesort.NatOrder.leb_total.
+  Qed.
+End TaskReverseLctOrder.
+
+Module TaskReverseLctSort := Mergesort.Sort TaskReverseLctOrder.
+
+Theorem load_permute est lct X Y (p: Permutation X Y) :
+  load X est lct = load Y est lct.
+Proof.
+  induction p; try reflexivity;
+    unfold load in *; unfold mapfold in *; simpl; lia.
+Qed.
+
+Theorem load_interleave_bounds est lct A B C (i: Interleave A B C) :
+  load A est lct <= load C est lct /\ load B est lct <= load C est lct.
+Proof.
+  unfold load.
+  unfold mapfold.
+  induction i.
+  auto.
+  simpl in *.
+  lia.
+  simpl in *.
+  lia.
+Qed.
+
+Theorem interleave_move_one_to_right {A} {X Y Z: list A} {a: A}
+  (I: Interleave (a::X) Y Z) :
+  { Y2 : list A & Interleave X Y2 Z}.
+Proof.
+  dependent induction I.
+  - exists (a :: y).
+    apply s_right.
+    apply I.
+  - specialize (IHI X a eq_refl).
+    destruct IHI.
+    exists (a0 :: x).
+    apply s_right.
+    apply i.
+Qed.
+
+(*
+         aa_total, mi
+           /      \
+      aa_tree    aa_removed
+         /
+    tl2, n, e
+       /
+  t, C -> n2, t2
+*)
+
+Definition update_interleave_and_tl2_for_pop
+  (C : nat)
+  (n : ThetaLambdaInner)
+  (t : ThetaLambdaTree C n)
+  (aa_tree aa_removed aa_total : AA)
+  (tl2 : @TLT2 C aa_tree n t)
+  (mi: Interleave aa_tree aa_removed aa_total)
+  {e}
+  {n2 t2}
+:
+  tl_dataΛ n = Some e ->
+  let path := projT2 (projT2 (tl_pop_max_env_path_2 t)) in
+  tl_remove_path t path = Some (existT _ n2 t2) ->
+  tl_pop_max_env t = existT (fun n => ThetaLambdaTree C n) n2 t2 ->
+  { aa_tree'    : AA &
+  { aa_removed' : AA &
+  prod (Interleave aa_tree' aa_removed' aa_total)
+       (option (@TLT2 C aa_tree' n t)) } }.
+Proof.
+  intros.
+  move aa_total after tl2.
+  move aa_removed after tl2.
+  induction tl2.
+  (* theta, impossible *)
+  - simpl in *.
+    inversion H.
+  (* lambda, this one gets pop-ed *)
+  - exists nil.
+    destruct (interleave_move_one_to_right mi) as [aa_removed' mi'].
+    exists aa_removed'.
+    refine ((mi', _)).
+    apply None.
+  (* inner node, endless complexity *)
+  - simpl in H0.
+    destruct (tl_max_env_side C li ri) eqn:side; [
+      (* ll *) clear IHtl2_2 |
+      (* rr *) clear IHtl2_1
+    ].
+Admitted.
+
+(*Theorem tl_pop_max_env {C n} (x: ThetaLambdaTree C n) :
+  {n : ThetaLambdaInner & ThetaLambdaTree C n } :=
+match x with*)
+
+Fixpoint theta_lambda_pop_loop
+  (steps: nat)
+  (C : nat)
+  (n : ThetaLambdaInner)
+  (t : ThetaLambdaTree C n)
+  (aa_tree aa_removed aa_total : AA)
+  (tl2 : @TLT2 C aa_tree n t)
+  (mi: Interleave aa_tree aa_removed aa_total)
+  {K} (baseproof: Proof C K aa_total)
+:
+  { aa_tree'    : AA &
+  { aa_removed' : AA &
+  prod (Interleave aa_tree' aa_removed' aa_total)
+       (@TLT2 C aa_tree' n t) } } *
+  { Z : AA & Proof C K Z }.
+Proof.
+  destruct steps; [
+    (* 1: no more steps *) |
+    destruct (tl_dataΛ n) as [
+      (* 2: have a lambda node *)
+      e |
+      (* 3: no more lambda nodes *)
+    ] eqn:E].
+  2: destruct (proofstep_by_tl_pop tl2 E) as [[c [p [oe [ne [l [Y [innerU innerP]]]]]]]|].
+  (* 1: no more steps *)
+  (* 2: have a lambda node and found overload *)
+  (* 3: have a lambda node and found no overload *)
+  (* 4: no more lambda nodes *)
+  1, 3, 4: constructor; [
+    exists aa_tree; exists aa_removed; apply ((mi, tl2)) |
+    exists aa_total; apply baseproof ].
+
+  constructor.
+  admit.
+
+  destruct (proofstep_over_subset c p oe ne l mi innerU innerP) as [outerU outerP].
+  exists (interleave_replace_left aa_tree Y aa_removed aa_total mi).
+  apply (p_step C K aa_total _ c p oe ne l).
+  apply baseproof.
+  apply outerU.
+  apply outerP.
+Admitted.
+
+(*Fixpoint theta_lambda_sweep_loop
+  (steps: nat)
+  (C : nat)
+  (n : ThetaLambdaInner)
+  (t : ThetaLambdaTree C n)
+  (aa : AA)
+  (tl2 : @TLT2 C aa n t)
+  {K} (baseproof: Proof C K aa)
+:
+  { Z : AA & Proof C K Z }
+:=
+  match steps with | _ => existT _ _ baseproof | S steps' =>
+    match tl2_data
+    end
+  end.
+*)
