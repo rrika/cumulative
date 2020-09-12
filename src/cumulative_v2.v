@@ -3237,82 +3237,544 @@ Fixpoint drop_updated {c p oe ol ne nl X Y} (U: Update c p oe ol ne nl X Y) : AA
 
 Definition update_interleave_for_pop
   (C : nat)
-  (n : ThetaLambdaInner)
-  (t : ThetaLambdaTree C n)
   (aa_tree aa_removed aa_total : AA)
   (mi: Interleave aa_tree aa_removed aa_total)
   {c p oe ol ne nl} (aa_tree_u: AA) (U: Update c p oe ol ne nl aa_tree aa_tree_u)
 :
-  { aa_tree'    : AA &
   { aa_removed' : AA &
-  (Interleave aa_tree' aa_removed' aa_total) } }.
+  (Interleave (drop_updated U) aa_removed' aa_total) }.
   (*prod (Interleave aa_tree' aa_removed' aa_total)
        (option (@TLT2 C aa_tree' n t)) } }.*)
 Proof.
   generalize dependent aa_tree_u.
   induction mi; intros.
   - (* nothing to pop *)
-    exists nil.
-    exists nil.
-    constructor.
+    inversion U.
   - (* interleave focused on element of aa_tree, what did the update do with this element? *)
-    destruct aa_tree_u; [inversion U|]. (* aa_tree_u has at least one element, it's the same length as aa_tree after all *)
-    inversion U; subst.
-    + (* update did nothing. a = a0. the modified element is further down *)
-      specialize (IHmi aa_tree_u H0).
-      destruct IHmi as [aa_tree' [aa_removed' IHmi]].
-      exists (cons a0 aa_tree').
+    dependent destruction U.
+    + destruct (IHmi ys U) as [aa_removed' mii].
       exists aa_removed'.
+      simpl.
       apply s_left.
-      apply IHmi.
+      apply mii.
     + (* update modified this element. thus it gets removed *)
       clear IHmi.
-      exists aa_tree_u. (* not (cons removedelement aa_tree_u) *)
       eexists (cons _ y).
       apply s_right.
+      simpl.
       apply mi.
   - (* interleave focused on element of aa_removed *)
-    specialize (IHmi aa_tree_u U).
-    destruct IHmi as [aa_tree' [aa_removed' IHmi]].
-    exists aa_tree'.
+    destruct (IHmi aa_tree_u U) as [aa_removed' IHmi'].
     exists (cons a aa_removed').
     apply s_right.
-    apply IHmi.
+    apply IHmi'.
 Qed.
 
+Definition deinterleave_update
+  {c p oe ol ne nl} {Z Z'} (U: Update c p oe ol ne nl Z Z')
+  {X Y} (mi: Interleave X Y Z)
+:
+   sum ({X': AA & Update c p oe ol ne nl X X'}) ({Y': AA & Update c p oe ol ne nl Y Y'}).
+Proof.
+  generalize dependent Y.
+  generalize dependent X.
+  induction U; intros.
+  - (* update happens further down *)
+    dependent destruction mi.
+    + specialize (IHU x y mi). (* top is from left *)
+      destruct IHU; [left|right].
+      * (* updated item is on left, take *)
+        destruct s as [X' U'].
+        exists (cons a X').
+        apply u1.
+        apply U'.
+      * (* updated item is on right, skip *)
+        apply s.
+   + specialize (IHU x y mi). (* top is from right *)
+      destruct IHU; [left|right].
+      * (* updated item is on left, skip *)
+        apply s.
+      * (* updated item is on right, take *)
+        destruct s as [X' U'].
+        exists (cons a X').
+        apply u1.
+        apply U'.
+  - (* update is here *)
+    dependent destruction mi.
+    + left.
+      eexists (cons _ x).
+      apply u0.
+    + right.
+      eexists (cons _ y).
+      apply u0.
+Qed.
+
+Definition deinterleave_update_
+  {c p oe ol ne nl} {Z Z'} (U: Update c p oe ol ne nl Z Z')
+  {X Y} (mi: Interleave X Y Z)
+:
+   sum ({X': AA & {XU: Update c p oe ol ne nl X X' & Interleave (drop_updated XU) Y (drop_updated U) } })
+       ({Y': AA & {YU: Update c p oe ol ne nl Y Y' & Interleave X (drop_updated YU) (drop_updated U) } }).
+Proof.
+  generalize dependent Y.
+  generalize dependent X.
+  induction U; intros.
+  - (* update happens further down *)
+    dependent destruction mi.
+    + specialize (IHU x y mi). (* top is from left *)
+      destruct IHU; [left|right].
+      * (* updated item is on left, take *)
+        destruct s as [X' [U' mii]].
+        exists (cons a X').
+        exists (u1 _ _ _ _ _ _ _ _ _ U').
+        simpl.
+        apply s_left.
+        apply mii.
+      * (* updated item is on right, skip *)
+        destruct s as [Y' [U' mii]].
+        exists Y'.
+        exists U'.
+        simpl.
+        apply s_left.
+        apply mii.
+   + specialize (IHU x y mi). (* top is from right *)
+      destruct IHU; [left|right].
+      * (* updated item is on left, skip *)
+        destruct s as [X' [U' mii]].
+        exists X'.
+        exists U'.
+        simpl.
+        apply s_right.
+        apply mii.
+      * (* updated item is on right, take *)
+        destruct s as [Y' [U' mii]].
+        exists (cons a Y').
+        exists (u1 _ _ _ _ _ _ _ _ _ U').
+        simpl.
+        apply s_right.
+        apply mii.
+  - (* update is here *)
+    dependent destruction mi.
+    + left.
+      eexists (cons _ x).
+      exists (u0 _ _ _ _ _ _ _).
+      auto.
+    + right.
+      eexists (cons _ y).
+      exists (u0 _ _ _ _ _ _ _).
+      auto.
+Qed.
+
+Theorem tl_tllct_combined {C li ri} :
+  tl_tllct (theta_lambda_combine C li ri) = omax (tl_tllct li) (tl_tllct ri).
+Proof.
+  destruct li.
+  destruct ri.
+  unfold theta_lambda_combine.
+  unfold tl_tllct.
+  simpl.
+  unfold omax.
+  unfold olift.
+  destruct tl_teest_tllct0.
+  destruct p.
+  destruct tl_teest_tllct1.
+  destruct p.
+  reflexivity.
+  reflexivity.
+  destruct tl_teest_tllct1.
+  destruct p.
+  reflexivity.
+  reflexivity.
+Qed.
+
+Theorem tl_lelct_combined {C li ri} :
+  tl_lelct (theta_lambda_combine C li ri) = omin (tl_lelct li) (tl_lelct ri).
+Proof.
+  destruct li.
+  destruct ri.
+  unfold theta_lambda_combine.
+  unfold tl_lelct.
+  simpl.
+  unfold omin.
+  unfold olift.
+  destruct tl_dataΛ0.
+  destruct p.
+  destruct tl_dataΛ1.
+  destruct p.
+  reflexivity.
+  reflexivity.
+  destruct tl_dataΛ1.
+  destruct p.
+  reflexivity.
+  reflexivity.
+Qed.
+
+Theorem olt_omax_split {a b c} :
+  olt (omax a b) c ->
+  (olt a c) /\ (olt b c).
+Proof.
+  intros.
+  destruct a as [a|];
+  destruct b as [b|];
+  destruct c as [c|];
+  unfold olt in *; try auto.
+  unfold omax in H.
+  unfold olift in H.
+  constructor; lia.
+Qed.
+
+Theorem olt_omax_join {a b c} :
+  olt a c -> olt b c ->
+  olt (omax a b) c.
+Proof.
+  intros.
+  destruct a as [a|];
+  destruct b as [b|];
+  destruct c as [c|];
+  unfold olt in *; try auto.
+  unfold omax.
+  unfold olift.
+  lia.
+Qed.
+
+Theorem olt_omin_split {a b c} :
+  olt a (omin b c) ->
+  (olt a b) /\ (olt a c).
+Proof.
+  intros.
+  destruct a as [a|];
+  destruct b as [b|];
+  destruct c as [c|];
+  unfold olt in *; try auto.
+  unfold omin in H.
+  unfold olift in H.
+  constructor; lia.
+Qed.
+
+Theorem olt_omin_join {a b c} :
+  olt a b -> olt a c ->
+  olt a (omin b c).
+Proof.
+  intros.
+  destruct a as [a|];
+  destruct b as [b|];
+  destruct c as [c|];
+  unfold olt in *; try auto.
+  unfold omin.
+  unfold olift.
+  lia.
+Qed.
+
+Inductive LeA : option nat -> option nat -> Type :=
+| lea0     :         LeA None     None
+| lea1 b   :         LeA None     (Some b)
+| lea2 a b : a<=b -> LeA (Some a) (Some b).
+
+Inductive LeB : option nat -> option nat -> Type :=
+| leb0     :         LeB None     None
+| leb1 a   :         LeB (Some a) None
+| leb2 a b : a<=b -> LeB (Some a) (Some b).
+
+
+Theorem transitive_le_lt {a b c} :
+  LeA a b -> olt b c -> olt a c.
+Proof.
+  intros.
+  destruct H; unfold olt; auto.
+  destruct c; auto.
+  unfold olt in *.
+  lia.
+Qed.
+
+Theorem transitive_lt_le {a b c} :
+  olt a b -> LeB b c -> olt a c.
+Proof.
+  intros.
+  destruct H0; unfold olt; auto.
+  destruct a; auto.
+  destruct a; auto.
+  unfold olt in *.
+  lia.
+Qed.
+
+Theorem transitive_le_lt_le {a b c d} :
+  LeA a b -> olt b c -> LeB c d -> olt a d.
+Proof.
+  intros.
+  destruct H;
+  destruct H1; unfold olt; auto.
+  unfold olt in H0.
+  lia.
+Qed.
+
+Inductive Gap (a b c d: option nat) : Type :=
+| gap : LeA a b -> LeB c d -> Gap a b c d.
+
+Theorem gap_nones {a b c d} : Gap a b c d -> (b = None -> a = None) /\ (c = None -> d = None).
+Proof.
+  intro.
+  destruct H; destruct l; destruct l0; auto; constructor; auto; intro; inversion H.
+Qed.
+
+Theorem tlt2_node_condition_adapt_left {C li ri li'}
+  (G: Gap (tl_tllct li') (tl_tllct li) (tl_lelct li) (tl_lelct li')) :
+  olt (tl_tllct (theta_lambda_combine C li ri)) (tl_lelct (theta_lambda_combine C li ri)) ->
+  olt (tl_tllct (theta_lambda_combine C li' ri)) (tl_lelct (theta_lambda_combine C li' ri)).
+Proof.
+  rewrite tl_tllct_combined.
+  rewrite tl_tllct_combined.
+  rewrite tl_lelct_combined.
+  rewrite tl_lelct_combined.
+  clear C.
+  remember (tl_tllct li') as A.
+  remember (tl_tllct li)  as B.
+  remember (tl_tllct ri)  as X.
+  remember (tl_lelct ri)  as Y.
+  remember (tl_lelct li)  as C.
+  remember (tl_lelct li') as D.
+  clear - G.
+  destruct G as [A_B C_D].
+  intros BX_CY.
+  destruct (olt_omax_split BX_CY) as [B_CY X_CY]; clear BX_CY.
+  destruct (olt_omin_split B_CY) as [B_C B_Y]; clear B_CY.
+  destruct (olt_omin_split X_CY) as [X_C X_Y]; clear X_CY.
+  apply olt_omax_join; apply olt_omin_join.
+  apply (transitive_le_lt_le A_B B_C C_D).
+  refine (transitive_le_lt A_B B_Y).
+  refine (transitive_lt_le X_C C_D).
+  apply X_Y.
+Qed.
+
+Theorem tlt2_node_condition_adapt_left_2 {C li ri li'}
+  (G: Gap (tl_tllct li') (tl_tllct li) (tl_lelct li) (tl_lelct li')) :
+  Gap (tl_tllct (theta_lambda_combine C li' ri)) (tl_tllct (theta_lambda_combine C li ri))
+      (tl_lelct (theta_lambda_combine C li ri)) (tl_lelct (theta_lambda_combine C li' ri)).
+Proof.
+  rewrite tl_tllct_combined.
+  rewrite tl_tllct_combined.
+  rewrite tl_lelct_combined.
+  rewrite tl_lelct_combined.
+  destruct G as [GA GB].
+  unfold omax; unfold olift.
+  constructor; [clear GB|clear GA].
+  destruct GA.
+  destruct (tl_tllct ri).
+    apply lea2; auto.
+    apply lea0.
+  destruct (tl_tllct ri).
+    apply lea2; lia.
+    apply lea1.
+  destruct (tl_tllct ri).
+    apply lea2; lia.
+    apply lea2; lia.
+  destruct GB.
+  destruct (tl_lelct ri).
+    apply leb2; auto.
+    apply leb0.
+  destruct (tl_lelct ri).
+    apply leb2; lia.
+    apply leb1.
+  destruct (tl_lelct ri).
+    apply leb2; lia.
+    apply leb2; lia.
+Qed.
+
+Theorem tlt2_node_condition_adapt_right {C li ri ri'}
+  (G: Gap (tl_tllct ri') (tl_tllct ri) (tl_lelct ri) (tl_lelct ri')) :
+  olt (tl_tllct (theta_lambda_combine C li ri)) (tl_lelct (theta_lambda_combine C li ri)) ->
+  olt (tl_tllct (theta_lambda_combine C li ri')) (tl_lelct (theta_lambda_combine C li ri')).
+Proof.
+  rewrite tl_tllct_combined.
+  rewrite tl_tllct_combined.
+  rewrite tl_lelct_combined.
+  rewrite tl_lelct_combined.
+  clear C.
+  remember (tl_tllct ri') as A.
+  remember (tl_tllct ri)  as B.
+  remember (tl_tllct li)  as X.
+  remember (tl_lelct li)  as Y.
+  remember (tl_lelct ri)  as C.
+  remember (tl_lelct ri') as D.
+  clear - G.
+  destruct G as [A_B C_D].
+  intros XB_YC.
+  destruct (olt_omax_split XB_YC) as [X_YC B_YC]; clear XB_YC.
+  destruct (olt_omin_split B_YC) as [B_Y B_C]; clear B_YC.
+  destruct (olt_omin_split X_YC) as [X_Y X_C]; clear X_YC.
+  apply olt_omax_join; apply olt_omin_join.
+  apply X_Y.
+  refine (transitive_lt_le X_C C_D).
+  refine (transitive_le_lt A_B B_Y).
+  apply (transitive_le_lt_le A_B B_C C_D).
+Qed.
+
+Theorem tlt2_node_condition_adapt_right_2 {C li ri ri'}
+  (G: Gap (tl_tllct ri') (tl_tllct ri) (tl_lelct ri) (tl_lelct ri')) :
+  Gap (tl_tllct (theta_lambda_combine C li ri')) (tl_tllct (theta_lambda_combine C li ri))
+      (tl_lelct (theta_lambda_combine C li ri)) (tl_lelct (theta_lambda_combine C li ri')).
+Proof.
+  rewrite tl_tllct_combined.
+  rewrite tl_tllct_combined.
+  rewrite tl_lelct_combined.
+  rewrite tl_lelct_combined.
+  destruct G as [GA GB].
+  unfold omax; unfold olift.
+  constructor; [clear GB|clear GA].
+  destruct GA.
+  destruct (tl_tllct li).
+    apply lea2; auto.
+    apply lea0.
+  destruct (tl_tllct li).
+    apply lea2; lia.
+    apply lea1.
+  destruct (tl_tllct li).
+    apply lea2; lia.
+    apply lea2; lia.
+  destruct GB.
+  destruct (tl_lelct li).
+    apply leb2; auto.
+    apply leb0.
+  destruct (tl_lelct li).
+    apply leb2; lia.
+    apply leb1.
+  destruct (tl_lelct li).
+    apply leb2; lia.
+    apply leb2; lia.
+Qed.
+
+Theorem gap_trivial_left {C li ri} :
+  Gap
+    (tl_tllct ri)
+    (tl_tllct (theta_lambda_combine C li ri))
+    (tl_lelct (theta_lambda_combine C li ri))
+    (tl_lelct ri).
+Proof.
+  constructor.
+  rewrite tl_tllct_combined.
+  unfold omax; unfold olift.
+  destruct (tl_tllct ri).
+  destruct (tl_tllct li).
+  apply lea2; lia.
+  apply lea2; auto.
+  destruct (tl_tllct li).
+  apply lea1; auto.
+  apply lea0; auto.
+  rewrite tl_lelct_combined.
+  destruct (tl_lelct ri).
+  destruct (tl_lelct li).
+  apply leb2; lia.
+  apply leb2; auto.
+  destruct (tl_lelct li).
+  apply leb1; auto.
+  apply leb0; auto.
+Qed.
+
+Theorem gap_trivial_right {C li ri} :
+  Gap
+    (tl_tllct li)
+    (tl_tllct (theta_lambda_combine C li ri))
+    (tl_lelct (theta_lambda_combine C li ri))
+    (tl_lelct li).
+Proof.
+  constructor.
+  rewrite tl_tllct_combined.
+  unfold omax; unfold olift.
+  destruct (tl_tllct li).
+  destruct (tl_tllct ri).
+  apply lea2; lia.
+  apply lea2; auto.
+  destruct (tl_tllct ri).
+  apply lea1; auto.
+  apply lea0; auto.
+  rewrite tl_lelct_combined.
+  destruct (tl_lelct li).
+  destruct (tl_lelct ri).
+  apply leb2; lia.
+  apply leb2; auto.
+  destruct (tl_lelct ri).
+  apply leb1; auto.
+  apply leb0; auto.
+Qed.
 
 Definition update_tl2_for_pop
   (C : nat)
   (n : ThetaLambdaInner)
   (t : ThetaLambdaTree C n)
-  (aa_tree aa_removed aa_total : AA)
+  (aa_tree: AA)
   (tl2 : @TLT2 C aa_tree n t)
   {c p oe ol ne nl} (aa_tree_u: AA) (U: Update c p oe ol ne nl aa_tree aa_tree_u)
 :
-  { aa_tree'    : AA &
-  prod (Interleave aa_tree' aa_removed' aa_total)
-       (option (@TLT2 C aa_tree' n t)) } }.
+  sum {n': ThetaLambdaInner & {t': ThetaLambdaTree C n' &
+        prod (@TLT2 C (drop_updated U) n' t')
+             (Gap (tl_tllct n') (tl_tllct n) (tl_lelct n) (tl_lelct n'))
+  } }
+      ((drop_updated U) = nil).
 Proof.
-  intros.
-  move aa_total after tl2.
-  move aa_removed after tl2.
-  induction tl2.
-  (* theta, impossible *)
-  - simpl in *.
-    inversion H.
-  (* lambda, this one gets pop-ed *)
-  - exists nil.
-    destruct (interleave_move_one_to_right mi) as [aa_removed' mi'].
-    exists aa_removed'.
-    refine ((mi', _)).
-    apply None.
-  (* inner node, endless complexity *)
-  - simpl in H0.
-    destruct (tl_max_env_side C li ri) eqn:side; [
-      (* ll *) clear IHtl2_2 |
-      (* rr *) clear IHtl2_1
-    ].
-Admitted.
+  generalize dependent aa_tree_u.
+  induction tl2 eqn:W; intros.
+  - (* theta leaf *)
+    dependent destruction U.
+    inversion U.
+    right.
+    reflexivity.
+  - (* lambda leaf *)
+    dependent destruction U.
+    inversion U.
+    right.
+    reflexivity.
+  - (* inner node, deinterleave update for subtrees *)
+    destruct (deinterleave_update_ U i) as [[X' [XU XPP]]|[Y' [YU YPP]]].
+    + (* left side has the update *)
+      clear IHt0_2.
+      specialize (IHt0_1 t0_1 eq_refl X' XU).
+      destruct IHt0_1.
+      * (* something remains of left side after pop *)
+        left.
+        destruct s as [li' s].
+        destruct s as [lhs' [t0_1' G]].
+        eexists _.
+        exists (tlt_node C lhs' rhs).
+        constructor.
+        apply (tlt2_node t0_1' t0_2).
+        apply XPP.
+        apply (@tlt2_node_condition_adapt_left C li ri li' G o).
+        apply (tlt2_node_condition_adapt_left_2 G). 
+      * (* left side empty, return right *)
+        left.
+        exists ri.
+        exists rhs.
+        rewrite e in XPP.
+        constructor.
+        apply interleave_right in XPP.
+        subst.
+        apply t0_2.
+        apply gap_trivial_left.
+    + (* right side has the update *)
+      clear IHt0_1.
+      specialize (IHt0_2 t0_2 eq_refl Y' YU).
+      destruct IHt0_2.
+      * (* something remains of right side after pop *)
+        left. (* non-empty *)
+        destruct s as [ri' s].
+        destruct s as [rhs' [t0_2' G]].
+        eexists _.
+        exists (tlt_node C lhs rhs').
+        constructor.
+        apply (tlt2_node t0_1 t0_2').
+        apply YPP.
+        apply (@tlt2_node_condition_adapt_right C li ri ri' G o).
+        apply (tlt2_node_condition_adapt_right_2 G). 
+      * (* right side empty, return left *)
+        left. (* non-empty *)
+        exists li.
+        exists lhs.
+        rewrite e in YPP.
+        apply interleave_left in YPP.
+        subst.
+        constructor.
+        apply t0_1.
+        apply gap_trivial_right.
+Qed.
 
 (*Theorem tl_pop_max_env {C n} (x: ThetaLambdaTree C n) :
   {n : ThetaLambdaInner & ThetaLambdaTree C n } :=
@@ -3330,8 +3792,10 @@ Fixpoint theta_lambda_pop_loop
 :
   { aa_tree'    : AA &
   { aa_removed' : AA &
-  prod (Interleave aa_tree' aa_removed' aa_total)
-       (@TLT2 C aa_tree' n t) } } *
+  prod (Interleave aa_tree' aa_removed' aa_total) (sum
+    { n' : ThetaLambdaInner &
+    { t' : ThetaLambdaTree C n' & @TLT2 C aa_tree' n' t'} }
+    (aa_tree' = nil)) } } *
   { Z : AA & Proof C K Z }.
 Proof.
   destruct steps; [
@@ -3349,21 +3813,34 @@ Proof.
   (* 3: have a lambda node and found no overload *)
   (* 4: no more lambda nodes *)
   1, 3, 4: constructor; [
-    exists aa_tree; exists aa_removed; apply ((mi, tl2)) |
+    exists aa_tree; exists aa_removed; refine ((mi, inl _)); exists n; exists t; apply tl2 |
     exists aa_total; apply baseproof ].
 
   constructor.
-  pose proof (update_interleave_for_pop C n t aa_tree aa_removed aa_total mi Y innerU).
-  destruct H as [aa_tree' [aa_removed' mii]].
-  exists aa_tree'.
-  exists aa_removed'.
-  constructor.
-  apply mii.
-  (* TODO *)
   (* as proofstep_by_tl_pop shrinks the list of activities, the fixpoint still has to
-     show how it relates to the full list. given aa_tree, aa_reomved, aa_total we now
+     show how it relates to the full list. given aa_tree, aa_removed, aa_total we now
      need a new aa_tree' and aa_removed' *)
-  admit.
+
+  pose proof (update_interleave_for_pop C aa_tree aa_removed aa_total mi Y innerU).
+  pose proof (update_tl2_for_pop _ _ _ _ tl2 _ innerU).
+  destruct H as [aa_removed' mii].
+  destruct H0 as [[n' [t' tl2']]|H0].
+  exists (drop_updated innerU).
+  (* pop successful *)
+    exists aa_removed'.
+    refine ((mii, _)).
+    left.
+    exists n'.
+    exists t'.
+    apply tl2'.
+  (* empty after pop *)
+    (* but we were assured that it's not by E : tl_dataΛ n = Some e *)
+    rewrite H0 in *.
+    exists nil.
+    exists aa_removed'.
+    refine ((mii, _)).
+    right.
+    reflexivity.
 
   destruct (proofstep_over_subset c p oe ne l mi innerU innerP) as [outerU outerP].
   exists (interleave_replace_left aa_tree Y aa_removed aa_total mi).
@@ -3371,7 +3848,7 @@ Proof.
   apply baseproof.
   apply outerU.
   apply outerP.
-Admitted.
+Qed.
 
 (*Fixpoint theta_lambda_sweep_loop
   (steps: nat)
