@@ -2133,6 +2133,7 @@ Inductive Path {C: nat} {leaf_inner} {leaf_node: ThetaLambdaTree C leaf_inner} :
     Path nr rhs ->
     Path (theta_lambda_combine C nl nr) (tlt_node C lhs rhs).
 
+
 Fixpoint path_simplify {C: nat} {leafn leaft rootn roott}
   (tpl: @Path C leafn leaft rootn roott) :
   list LR
@@ -2276,11 +2277,10 @@ Proof.
   now destruct (tl_pop_max_env x2).
 Qed.*)
 
-Inductive Interleave {A} (*DropOk: A -> Prop*) : list A -> list A -> list A -> Type :=
-| s_nil           : Interleave (*DropOk*) nil nil nil
-| s_left  a x y z : Interleave (*DropOk*) x y z -> Interleave (*DropOk*) (a::x) y (a::z)
-| s_right a x y z : Interleave (*DropOk*) x y z -> Interleave (*DropOk*) x (a::y) (a::z).
-(* | s_drop  a x y z : Interleave (*DropOk*) x y z -> (*DropOk a ->*) Interleave (*DropOk*) x y (a::z). *)
+Inductive Interleave {A} : list A -> list A -> list A -> Type :=
+| s_nil           : Interleave nil nil nil
+| s_left  a x y z : Interleave x y z -> Interleave (a::x) y (a::z)
+| s_right a x y z : Interleave x y z -> Interleave x (a::y) (a::z).
 
 Definition tl_llct_prop (tl: ThetaLambdaInner) (a:A) :=
   match (tl_tllct tl) with Some llct => a_lct a <= llct | _ => True end.
@@ -2836,6 +2836,12 @@ Qed.
 Definition update_single_for_overload_lct (a: Activity) (overload_lct: nat) :=
   mkActivity (a_est a) (overload_lct + (a_p a) - 1) (a_c a) (a_p a).
 
+(*  Z    = 1 9 8 2 3 7 6 4  ^ *)
+(*  X1   = 1 - - 2 3 - - 4  ^ *)
+(*  Y    = - 9 8 - - 7 6 -  | *)
+(*  X2   = 5 - - 5 5 - - 5  v *)
+(*  return 5 9 8 5 5 7 6 5  v *)
+
 Fixpoint interleave_replace_left {A} (X1 X2 Y Z: list A)
   (i: Interleave X1 Y Z) : list A :=
 match i with
@@ -2900,6 +2906,13 @@ Proof.
   induction i; auto.
   all: simpl; rewrite IHi; reflexivity.
 Qed.
+
+(* update from - - - A B C - - -
+            to - - - D E F - - -
+            to construct an
+   update from I J K A B C L M N
+            to I J K D E F L M N
+*)
 
 Theorem update_left
   {X XL YL R}
@@ -3214,22 +3227,69 @@ Qed.
   t, C -> n2, t2
 *)
 
-Definition update_interleave_and_tl2_for_pop
+Compute 0.
+
+Fixpoint drop_updated {c p oe ol ne nl X Y} (U: Update c p oe ol ne nl X Y) : AA :=
+  match U with
+  | u1 _ _ _ _ _ _ a xs ys us => (cons a (drop_updated us))
+  | u0 _ _ _ _ _ _ s => s
+  end.
+
+Definition update_interleave_for_pop
+  (C : nat)
+  (n : ThetaLambdaInner)
+  (t : ThetaLambdaTree C n)
+  (aa_tree aa_removed aa_total : AA)
+  (mi: Interleave aa_tree aa_removed aa_total)
+  {c p oe ol ne nl} (aa_tree_u: AA) (U: Update c p oe ol ne nl aa_tree aa_tree_u)
+:
+  { aa_tree'    : AA &
+  { aa_removed' : AA &
+  (Interleave aa_tree' aa_removed' aa_total) } }.
+  (*prod (Interleave aa_tree' aa_removed' aa_total)
+       (option (@TLT2 C aa_tree' n t)) } }.*)
+Proof.
+  generalize dependent aa_tree_u.
+  induction mi; intros.
+  - (* nothing to pop *)
+    exists nil.
+    exists nil.
+    constructor.
+  - (* interleave focused on element of aa_tree, what did the update do with this element? *)
+    destruct aa_tree_u; [inversion U|]. (* aa_tree_u has at least one element, it's the same length as aa_tree after all *)
+    inversion U; subst.
+    + (* update did nothing. a = a0. the modified element is further down *)
+      specialize (IHmi aa_tree_u H0).
+      destruct IHmi as [aa_tree' [aa_removed' IHmi]].
+      exists (cons a0 aa_tree').
+      exists aa_removed'.
+      apply s_left.
+      apply IHmi.
+    + (* update modified this element. thus it gets removed *)
+      clear IHmi.
+      exists aa_tree_u. (* not (cons removedelement aa_tree_u) *)
+      eexists (cons _ y).
+      apply s_right.
+      apply mi.
+  - (* interleave focused on element of aa_removed *)
+    specialize (IHmi aa_tree_u U).
+    destruct IHmi as [aa_tree' [aa_removed' IHmi]].
+    exists aa_tree'.
+    exists (cons a aa_removed').
+    apply s_right.
+    apply IHmi.
+Qed.
+
+
+Definition update_tl2_for_pop
   (C : nat)
   (n : ThetaLambdaInner)
   (t : ThetaLambdaTree C n)
   (aa_tree aa_removed aa_total : AA)
   (tl2 : @TLT2 C aa_tree n t)
-  (mi: Interleave aa_tree aa_removed aa_total)
-  {e}
-  {n2 t2}
+  {c p oe ol ne nl} (aa_tree_u: AA) (U: Update c p oe ol ne nl aa_tree aa_tree_u)
 :
-  tl_dataΛ n = Some e ->
-  let path := projT2 (projT2 (tl_pop_max_env_path_2 t)) in
-  tl_remove_path t path = Some (existT _ n2 t2) ->
-  tl_pop_max_env t = existT (fun n => ThetaLambdaTree C n) n2 t2 ->
   { aa_tree'    : AA &
-  { aa_removed' : AA &
   prod (Interleave aa_tree' aa_removed' aa_total)
        (option (@TLT2 C aa_tree' n t)) } }.
 Proof.
@@ -3275,12 +3335,14 @@ Fixpoint theta_lambda_pop_loop
   { Z : AA & Proof C K Z }.
 Proof.
   destruct steps; [
-    (* 1: no more steps *) |
+    (* 1: no more steps *) clear theta_lambda_pop_loop |
+    specialize (theta_lambda_pop_loop steps C); clear steps;
     destruct (tl_dataΛ n) as [
       (* 2: have a lambda node *)
       e |
       (* 3: no more lambda nodes *)
     ] eqn:E].
+
   2: destruct (proofstep_by_tl_pop tl2 E) as [[c [p [oe [ne [l [Y [innerU innerP]]]]]]]|].
   (* 1: no more steps *)
   (* 2: have a lambda node and found overload *)
@@ -3291,6 +3353,16 @@ Proof.
     exists aa_total; apply baseproof ].
 
   constructor.
+  pose proof (update_interleave_for_pop C n t aa_tree aa_removed aa_total mi Y innerU).
+  destruct H as [aa_tree' [aa_removed' mii]].
+  exists aa_tree'.
+  exists aa_removed'.
+  constructor.
+  apply mii.
+  (* TODO *)
+  (* as proofstep_by_tl_pop shrinks the list of activities, the fixpoint still has to
+     show how it relates to the full list. given aa_tree, aa_reomved, aa_total we now
+     need a new aa_tree' and aa_removed' *)
   admit.
 
   destruct (proofstep_over_subset c p oe ne l mi innerU innerP) as [outerU outerP].
