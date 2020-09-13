@@ -3850,19 +3850,75 @@ Proof.
   apply outerP.
 Qed.
 
-(*Fixpoint theta_lambda_sweep_loop
+Inductive OptionTree (C: nat) (aa: AA) :=
+| otsome (n: ThetaLambdaInner) (t : ThetaLambdaTree C n) (tl2 : @TLT2 C aa n t) : OptionTree C aa
+| otnone : aa = nil -> OptionTree C aa.
+
+Inductive TreeAndRemovedTasks (C: nat) (aa: AA) :=
+| tart
+  (aa_tree aa_removed: AA)
+  (mi: Interleave aa_tree aa_removed aa)
+  (ot: OptionTree C aa_tree)
+  : TreeAndRemovedTasks C aa.
+
+Definition theta_lambda_pop_loop_wrapped
   (steps: nat)
   (C : nat)
-  (n : ThetaLambdaInner)
-  (t : ThetaLambdaTree C n)
   (aa : AA)
-  (tl2 : @TLT2 C aa n t)
+  (tr : TreeAndRemovedTasks C aa)
   {K} (baseproof: Proof C K aa)
 :
-  { Z : AA & Proof C K Z }
+  TreeAndRemovedTasks C aa * { Z : AA & Proof C K Z }.
+Proof.
+  destruct tr.
+  destruct ot.
+  pose proof (theta_lambda_pop_loop steps C n t aa_tree aa_removed aa
+    tl2 mi baseproof) as H.
+  destruct H as [H ZP].
+  destruct H as [aa_tree' [aa_removed' [I J]]].
+  assert (OptionTree C aa_tree').
+  destruct J.
+  destruct s as [n' [t' tl2']].
+  apply (otsome C aa_tree' n' t' tl2').
+  apply (otnone C aa_tree' e).
+  constructor.
+  apply (tart C aa aa_tree' aa_removed' I H).
+  apply ZP.
+
+  constructor.
+  apply (tart C aa aa_tree aa_removed mi (otnone _ _ e)).
+  exists aa.
+  exact baseproof.
+Qed.
+
+Fixpoint theta_lambda_sweep_loop
+  (steps_inner: nat)
+  (steps: nat)
+  (C : nat)
+  (aa : AA)
+  (tr: TreeAndRemovedTasks C aa)
+  {K} (baseproof: Proof C K aa)
+:
+  TreeAndRemovedTasks C aa * { Z : AA & Proof C K Z }.
+Proof.
+  destruct steps; [exact ((tr, existT _ _ baseproof))|].
+  specialize (theta_lambda_sweep_loop steps_inner steps C aa); clear steps.
+
+  (* flip one from theta to lambda *)
+  (* TODO *)
+
+  (* then pop lambdas *)
+  destruct (theta_lambda_pop_loop_wrapped steps_inner C aa tr baseproof) as [tr' ZP].
+  destruct ZP.
+  specialize (theta_lambda_sweep_loop tr' x).
+  apply tr'.
+  apply ZP.
+  exact ((tr', ZP)).
+
+  admit.
+    (* 1: no more steps *) clear theta_lambda_pop_loop |
 :=
   match steps with | _ => existT _ _ baseproof | S steps' =>
     match tl2_data
     end
   end.
-*)
