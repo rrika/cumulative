@@ -2277,6 +2277,22 @@ Proof.
   now destruct (tl_pop_max_env x2).
 Qed.*)
 
+
+Definition tl_towards_max_lct {C n} (x: ThetaLambdaTree C n) : option LR :=
+match x with
+| tlt_theta _ i a  => None
+| tlt_lambda _ i a => None
+| @tlt_node _ nl nr lhs rhs =>
+  match (tl_tllct nl, tl_tllct nr) with
+  | (None,       None)       => None
+  | (Some lllct, None)       => Some ll
+  | (None,       Some rllct) => Some rr
+  | (Some lllct, Some rllct) =>
+    Some (if rllct <? lllct then ll else rr)
+  end
+end.
+
+
 Inductive Interleave {A} : list A -> list A -> list A -> Type :=
 | s_nil           : Interleave nil nil nil
 | s_left  a x y z : Interleave x y z -> Interleave (a::x) y (a::z)
@@ -3055,7 +3071,7 @@ Proof.
     discriminate H.
 Qed.
 
-Theorem extend_proof_by_tl_pop
+Theorem UNUSED_extend_proof_by_tl_pop
   {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
   {K} (baseproof: Proof C K X)
 :
@@ -3982,20 +3998,24 @@ Inductive TreeAndRemovedTasks (C: nat) (aa: AA) :=
   (ot: OptionTree C aa_tree)
   : TreeAndRemovedTasks C aa.
 
-Definition tart_fn := 
+Definition tart_fn (C : nat) :=
   forall
-    (C : nat)
     (aa : AA)
     (tr : TreeAndRemovedTasks C aa)
     {K} (baseproof: Proof C K aa),
-    { Z : AA & prod (TreeAndRemovedTasks C aa) (Proof C K Z) }.
+    { Z : AA & prod (TreeAndRemovedTasks C Z) (Proof C K Z) }.
 
-(*Definition tart_bind (f1: tart_fn) (f2: tart_fn) : tart_fn.
+Definition tart_bind {C} (f1: tart_fn C) (f2: tart_fn C) : tart_fn C.
 Proof.
   unfold tart_fn in *.
   intros.
-  specialize (f1 C aa tr K baseproof).
-  clear aa.*)
+  specialize (f1 aa tr K baseproof).
+  clear aa tr baseproof.
+  destruct f1 as [aa' [tr' proof']].
+  specialize (f2 aa' tr' K proof').
+  clear aa' tr' proof'.
+  apply f2.
+Qed.
 
 (*
 
@@ -4081,6 +4101,69 @@ Proof.
   exact baseproof.
 Qed.
 
+(* theta -> lambda *)
+Definition tlt2_flip_max_lct {C aa n} (t: ThetaLambdaTree C n)
+  (tl: @TLT2 C aa n t) :
+  option {n' : ThetaLambdaInner & {t': ThetaLambdaTree C n' &
+(@TLT2 C aa n' t') (*
+    prod (@TLT2 C aa n' t') (prod
+      (ole (tl_tllct))
+      (ole (tl_tllct))
+    )*)}}.
+Proof.
+  induction tl.
+  apply Some.
+  eexists _.
+  eexists _.
+  apply tlt2_lambda.
+  apply None.
+  destruct (tl_towards_max_lct (tlt_node C lhs rhs)).
+  destruct IHtl1 as [[li' [lhs' lhs2']]|]; [apply Some|apply None].
+  set (ni := theta_lambda_combine C li' ri).
+  set (node := tlt_node C lhs' rhs).
+  exists ni.
+  exists node.
+  apply (tlt2_node lhs2' tl2).
+  apply i.
+
+  (* after the leaf flipped the gap invariant must be upheld *)
+  (* currently this is impossible as when two tasks have the *)
+  (* same lct and one of them gets flipped, the two times are *)
+  (* equal, not one less than the other *)
+  (* probably the solution is to flip ALL tasks with the same *)
+  (* lct at the same time *)
+  admit.
+
+  destruct IHtl2 as [[ri' [rhs' rhs2']]|]; [apply Some|apply None].
+  set (ni := theta_lambda_combine C li ri').
+  set (node := tlt_node C lhs rhs').
+  exists ni.
+  exists node.
+  apply (tlt2_node tl1 rhs2').
+  apply i.
+  admit. (* as above *)
+Admitted.
+
+Definition theta_lambda_flip
+  (C : nat)
+  (aa : AA)
+  (tr : TreeAndRemovedTasks C aa)
+  {K} (baseproof: Proof C K aa)
+:
+  { Z : AA & prod (TreeAndRemovedTasks C Z) (Proof C K Z) }.
+Proof.
+  exists aa.
+  destruct tr eqn:W.
+  destruct ot.
+  clear W.
+  destruct (tlt2_flip_max_lct t tl2).
+  refine ((_, baseproof)).
+  destruct s as [n' [t' tl2']].
+  apply (tart C aa aa_tree aa_removed mi (otsome C _ _ t' tl2')).
+  exact ((tr, baseproof)).
+  exact ((tr, baseproof)).
+Qed.
+
 Fixpoint theta_lambda_sweep_loop
   (steps_inner: nat)
   (steps: nat)
@@ -4093,15 +4176,10 @@ Fixpoint theta_lambda_sweep_loop
 Proof.
   destruct steps; [exact (existT _ _ (tr, baseproof))|].
   specialize (theta_lambda_sweep_loop steps_inner steps C); clear steps.
-
- (*destruct tr as [aa_tree aa_removed mi ot].*)
-
-  (* flip one from theta to lambda *)
-  (* TODO *)
-
-  (* then pop lambdas *)
-  destruct (theta_lambda_pop_loop_wrapped_x steps_inner C aa tr baseproof) as [tr' ZP].
-  destruct ZP.
-  specialize (theta_lambda_sweep_loop tr' t K p).
-  apply theta_lambda_sweep_loop.
+  enough (tart_fn C).
+  specialize (H aa tr K baseproof).
+  apply H.
+  refine (tart_bind (theta_lambda_flip C) _).
+  refine (tart_bind (theta_lambda_pop_loop_wrapped_x steps_inner C)
+    theta_lambda_sweep_loop).
 Qed.
