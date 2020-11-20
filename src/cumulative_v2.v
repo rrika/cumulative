@@ -3270,6 +3270,42 @@ Proof.
     apply IHmi'.
 Qed.
 
+
+Definition update_interleave_for_pop_x
+  (C : nat)
+  (aa_tree aa_tree_u aa_removed aa_total : AA)
+  (mi: Interleave aa_tree aa_removed aa_total)
+  (aa_total' := interleave_replace_left aa_tree aa_tree_u aa_removed aa_total mi)
+  {c p oe ol ne nl} (U: Update c p oe ol ne nl aa_tree aa_tree_u)
+:
+  { aa_removed' : AA &
+  (Interleave (drop_updated U) aa_removed' aa_total') }.
+Proof.
+  generalize dependent aa_tree_u.
+  induction mi; intros.
+  - (* nothing to pop *)
+    inversion U.
+  - (* interleave focused on element of aa_tree, what did the update do with this element? *)
+    dependent destruction U.
+    + destruct (IHmi ys U) as [aa_removed' mii].
+      exists aa_removed'.
+      simpl.
+      apply s_left.
+      apply mii.
+    + (* update modified this element. thus it gets removed *)
+      subst aa_total'.
+      clear IHmi.
+      eexists (cons _ y).
+      apply s_right.
+      rewrite interleave_replace_left_nop.
+      apply mi.
+  - (* interleave focused on element of aa_removed *)
+    destruct (IHmi aa_tree_u U) as [aa_removed' IHmi'].
+    exists (cons a aa_removed').
+    apply s_right.
+    apply IHmi'.
+Qed.
+
 Definition deinterleave_update
   {c p oe ol ne nl} {Z Z'} (U: Update c p oe ol ne nl Z Z')
   {X Y} (mi: Interleave X Y Z)
@@ -3780,6 +3816,9 @@ Qed.
   {n : ThetaLambdaInner & ThetaLambdaTree C n } :=
 match x with*)
 
+(* as a leaf is removed from the tree,
+   the corresponding activity in the list is updated *)
+
 Fixpoint theta_lambda_pop_loop
   (steps: nat)
   (C : nat)
@@ -3850,6 +3889,88 @@ Proof.
   apply outerP.
 Qed.
 
+
+Fixpoint theta_lambda_pop_loop_x
+  (steps: nat)
+  (C : nat)
+  (n : ThetaLambdaInner)
+  (t : ThetaLambdaTree C n)
+  (aa_tree aa_removed aa_total : AA)
+  (tl2 : @TLT2 C aa_tree n t)
+  (mi: Interleave aa_tree aa_removed aa_total)
+  {K} (baseproof: Proof C K aa_total)
+:
+  { aa_total'   : AA & 
+  { aa_tree'    : AA &
+  { aa_removed' : AA &
+  prod (prod (Interleave aa_tree' aa_removed' aa_total') (sum
+    { n' : ThetaLambdaInner &
+    { t' : ThetaLambdaTree C n' & @TLT2 C aa_tree' n' t'} }
+    (aa_tree' = nil)))
+  (Proof C K aa_total') } } }.
+Proof.
+
+  destruct steps; [
+    (* 1: no more steps *) clear theta_lambda_pop_loop_x |
+    specialize (theta_lambda_pop_loop_x steps C); clear steps;
+    destruct (tl_dataΛ n) as [
+      (* 2: have a lambda node *)
+      e |
+      (* 3: no more lambda nodes *)
+    ] eqn:E].
+
+  2: destruct (proofstep_by_tl_pop tl2 E) as
+       [[c [p [oe [ne [l [aa_tree' [innerU innerP]]]]]]]|].
+
+  (* 1: no more steps *)
+  (* 2: have a lambda node and found overload *)
+  (* 3: have a lambda node and found no overload *)
+  (* 4: no more lambda nodes *)
+  1, 3, 4:
+    exists aa_total; exists aa_tree; exists aa_removed; refine (((mi, inl _)), baseproof); exists n; exists t; apply tl2.
+
+
+  (* as proofstep_by_tl_pop shrinks the list of activities, the fixpoint still has to
+     show how it relates to the full list. given aa_tree, aa_removed, aa_total we now
+     need a new aa_tree' and aa_removed' *)
+
+  pose proof (update_interleave_for_pop_x C aa_tree aa_tree' aa_removed aa_total mi innerU).
+  exists (*aa_total'=*) (interleave_replace_left aa_tree aa_tree' aa_removed aa_total mi).
+  pose proof (update_tl2_for_pop _ _ _ _ tl2 _ innerU).
+  destruct H as [aa_removed' mii].
+  destruct H0 as [[n' [t' tl2']]|H0].
+  exists (drop_updated innerU).
+  (* pop successful *)
+    exists aa_removed'.
+    constructor.
+    refine ((mii, _)).
+    left.
+    exists n'.
+    exists t'.
+    apply tl2'.
+
+    destruct (proofstep_over_subset c p oe ne l mi innerU innerP) as [outerU outerP].
+    apply (p_step C K aa_total _ c p oe ne l).
+    apply baseproof.
+    apply outerU.
+    apply outerP.
+  (* empty after pop *)
+    (* but we were assured that it's not by E : tl_dataΛ n = Some e *)
+    rewrite H0 in *.
+    exists nil.
+    exists aa_removed'.
+    constructor.
+    refine ((mii, _)).
+    right.
+    reflexivity.
+
+  destruct (proofstep_over_subset c p oe ne l mi innerU innerP) as [outerU outerP].
+  apply (p_step C K aa_total _ c p oe ne l).
+  apply baseproof.
+  apply outerU.
+  apply outerP.
+Qed.
+
 Inductive OptionTree (C: nat) (aa: AA) :=
 | otsome (n: ThetaLambdaInner) (t : ThetaLambdaTree C n) (tl2 : @TLT2 C aa n t) : OptionTree C aa
 | otnone : aa = nil -> OptionTree C aa.
@@ -3861,6 +3982,26 @@ Inductive TreeAndRemovedTasks (C: nat) (aa: AA) :=
   (ot: OptionTree C aa_tree)
   : TreeAndRemovedTasks C aa.
 
+(*
+
+(* a rewrite of the above theta_lambda_pop_loop to use TreeAndRemovedTasks instead *)
+
+Fixpoint theta_lambda_pop_loop_v2 (steps: nat)
+  (C : nat)
+  (aa : AA)
+  (tr : TreeAndRemovedTasks C aa)
+  {K} (baseproof: Proof C K aa)
+:
+  TreeAndRemovedTasks C aa * { Z : AA & Proof C K Z }.
+Proof.
+  set (no_more_changes := (tr, existT _ _ baseproof)).
+  destruct steps; [apply no_more_changes|clear steps].
+  destruct tr.
+  destruct (tl_dataΛ n) as [e|] eqn:E.
+
+  2: destruct (proofstep_by_tl_pop tl2 E) as [[c [p [oe [ne [l [Y [innerU innerP]]]]]]]|].
+*)
+
 Definition theta_lambda_pop_loop_wrapped
   (steps: nat)
   (C : nat)
@@ -3868,7 +4009,7 @@ Definition theta_lambda_pop_loop_wrapped
   (tr : TreeAndRemovedTasks C aa)
   {K} (baseproof: Proof C K aa)
 :
-  TreeAndRemovedTasks C aa * { Z : AA & Proof C K Z }.
+  { Z : AA & prod (TreeAndRemovedTasks C aa) (Proof C K Z) }.
 Proof.
   destruct tr.
   destruct ot.
@@ -3881,13 +4022,15 @@ Proof.
   destruct s as [n' [t' tl2']].
   apply (otsome C aa_tree' n' t' tl2').
   apply (otnone C aa_tree' e).
+  destruct ZP as [Z P].
+  exists Z.
   constructor.
   apply (tart C aa aa_tree' aa_removed' I H).
-  apply ZP.
+  apply P.
 
+  exists aa.
   constructor.
   apply (tart C aa aa_tree aa_removed mi (otnone _ _ e)).
-  exists aa.
   exact baseproof.
 Qed.
 
@@ -3911,14 +4054,9 @@ Proof.
   destruct (theta_lambda_pop_loop_wrapped steps_inner C aa tr baseproof) as [tr' ZP].
   destruct ZP.
   specialize (theta_lambda_sweep_loop tr' x).
+  apply (theta_lambda_sweep_loop
+  constructor.
   apply tr'.
-  apply ZP.
-  exact ((tr', ZP)).
-
-  admit.
-    (* 1: no more steps *) clear theta_lambda_pop_loop |
-:=
-  match steps with | _ => existT _ _ baseproof | S steps' =>
-    match tl2_data
-    end
-  end.
+  exists x.
+  apply p.
+Qed.
