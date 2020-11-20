@@ -3982,6 +3982,21 @@ Inductive TreeAndRemovedTasks (C: nat) (aa: AA) :=
   (ot: OptionTree C aa_tree)
   : TreeAndRemovedTasks C aa.
 
+Definition tart_fn := 
+  forall
+    (C : nat)
+    (aa : AA)
+    (tr : TreeAndRemovedTasks C aa)
+    {K} (baseproof: Proof C K aa),
+    { Z : AA & prod (TreeAndRemovedTasks C aa) (Proof C K Z) }.
+
+(*Definition tart_bind (f1: tart_fn) (f2: tart_fn) : tart_fn.
+Proof.
+  unfold tart_fn in *.
+  intros.
+  specialize (f1 C aa tr K baseproof).
+  clear aa.*)
+
 (*
 
 (* a rewrite of the above theta_lambda_pop_loop to use TreeAndRemovedTasks instead *)
@@ -4034,6 +4049,38 @@ Proof.
   exact baseproof.
 Qed.
 
+
+Definition theta_lambda_pop_loop_wrapped_x
+  (steps: nat)
+  (C : nat)
+  (aa : AA)
+  (tr : TreeAndRemovedTasks C aa)
+  {K} (baseproof: Proof C K aa)
+:
+  { Z : AA & prod (TreeAndRemovedTasks C Z) (Proof C K Z) }.
+Proof.
+  destruct tr.
+  destruct ot.
+  pose proof (theta_lambda_pop_loop_x steps C n t aa_tree aa_removed aa
+    tl2 mi baseproof) as H.
+  destruct H as [aa_total' [aa_tree' [aa_removed' [[I J] P]]]].
+  assert (OptionTree C aa_tree').
+  destruct J.
+  destruct s as [n' [t' tl2']].
+  apply (otsome C aa_tree' n' t' tl2').
+  apply (otnone C aa_tree' e).
+
+  exists aa_total'.
+  constructor.
+  apply (tart C _ aa_tree' aa_removed' I H).
+  apply P.
+
+  exists aa.
+  constructor.
+  apply (tart C aa aa_tree aa_removed mi (otnone _ _ e)).
+  exact baseproof.
+Qed.
+
 Fixpoint theta_lambda_sweep_loop
   (steps_inner: nat)
   (steps: nat)
@@ -4042,21 +4089,19 @@ Fixpoint theta_lambda_sweep_loop
   (tr: TreeAndRemovedTasks C aa)
   {K} (baseproof: Proof C K aa)
 :
-  TreeAndRemovedTasks C aa * { Z : AA & Proof C K Z }.
+  { Z : AA & prod (TreeAndRemovedTasks C Z) (Proof C K Z) }.
 Proof.
-  destruct steps; [exact ((tr, existT _ _ baseproof))|].
-  specialize (theta_lambda_sweep_loop steps_inner steps C aa); clear steps.
+  destruct steps; [exact (existT _ _ (tr, baseproof))|].
+  specialize (theta_lambda_sweep_loop steps_inner steps C); clear steps.
+
+ (*destruct tr as [aa_tree aa_removed mi ot].*)
 
   (* flip one from theta to lambda *)
   (* TODO *)
 
   (* then pop lambdas *)
-  destruct (theta_lambda_pop_loop_wrapped steps_inner C aa tr baseproof) as [tr' ZP].
+  destruct (theta_lambda_pop_loop_wrapped_x steps_inner C aa tr baseproof) as [tr' ZP].
   destruct ZP.
-  specialize (theta_lambda_sweep_loop tr' x).
-  apply (theta_lambda_sweep_loop
-  constructor.
-  apply tr'.
-  exists x.
-  apply p.
+  specialize (theta_lambda_sweep_loop tr' t K p).
+  apply theta_lambda_sweep_loop.
 Qed.
