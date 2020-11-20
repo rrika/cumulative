@@ -4005,6 +4005,16 @@ Definition tart_fn (C : nat) :=
     {K} (baseproof: Proof C K aa),
     { Z : AA & prod (TreeAndRemovedTasks C Z) (Proof C K Z) }.
 
+Definition tart_id {C} : tart_fn C.
+Proof.
+  unfold tart_fn.
+  intros.
+  exists aa.
+  constructor.
+  apply tr.
+  apply baseproof.
+Qed.
+
 Definition tart_bind {C} (f1: tart_fn C) (f2: tart_fn C) : tart_fn C.
 Proof.
   unfold tart_fn in *.
@@ -4164,22 +4174,29 @@ Proof.
   exact ((tr, baseproof)).
 Qed.
 
-Fixpoint theta_lambda_sweep_loop
-  (steps_inner: nat)
+Fixpoint tart_loop
+  (C: nat)
+  (body: (*continuation*) tart_fn C -> tart_fn C)
   (steps: nat)
-  (C : nat)
-  (aa : AA)
-  (tr: TreeAndRemovedTasks C aa)
-  {K} (baseproof: Proof C K aa)
 :
-  { Z : AA & prod (TreeAndRemovedTasks C Z) (Proof C K Z) }.
+  tart_fn C
+:=
+  match steps with
+  | 0        => tart_id
+  | S steps' => body (tart_loop C body steps')
+  end.
+
+Definition theta_lambda_sweep_loop
+  (C : nat)
+  (steps: nat)
+  (steps_inner: nat)
+:
+  tart_fn C.
 Proof.
-  destruct steps; [exact (existT _ _ (tr, baseproof))|].
-  specialize (theta_lambda_sweep_loop steps_inner steps C); clear steps.
-  enough (tart_fn C).
-  specialize (H aa tr K baseproof).
-  apply H.
+  refine (tart_loop C _ steps).
+  intro continuation.
   refine (tart_bind (theta_lambda_flip C) _).
-  refine (tart_bind (theta_lambda_pop_loop_wrapped_x steps_inner C)
-    theta_lambda_sweep_loop).
+  refine (tart_bind (theta_lambda_pop_loop_wrapped_x steps_inner C) _).
+  exact continuation.
 Qed.
+
