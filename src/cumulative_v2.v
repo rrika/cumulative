@@ -3196,17 +3196,17 @@ Require Import Coq.Sorting.Mergesort.
 Require Import Coq.Sorting.Permutation.
 Require Import Orders.
 
-Module TaskReverseLctOrder <: TotalLeBool.
+Module TaskEstOrder <: TotalLeBool.
   Definition t := Activity.
-  Definition leb a b := (a_lct b) <=? (a_lct a).
+  Definition leb a b := (a_est a) <=? (a_est b).
   Theorem leb_total : forall a1 a2, (leb a1 a2) = true \/ (leb a2 a1) = true.
     intros.
     unfold leb.
     apply Coq.Sorting.Mergesort.NatOrder.leb_total.
   Qed.
-End TaskReverseLctOrder.
+End TaskEstOrder.
 
-Module TaskReverseLctSort := Mergesort.Sort TaskReverseLctOrder.
+Module TaskEstSort := Mergesort.Sort TaskEstOrder.
 
 Theorem load_permute est lct X Y (p: Permutation X Y) :
   load X est lct = load Y est lct.
@@ -3330,7 +3330,7 @@ Proof.
     exists (cons a aa_removed').
     apply s_right.
     apply IHmi'.
-Qed.
+Defined.
 
 Definition deinterleave_update
   {c p oe ol ne nl} {Z Z'} (U: Update c p oe ol ne nl Z Z')
@@ -3836,7 +3836,7 @@ Proof.
         constructor.
         apply t0_1.
         apply gap_trivial_right.
-Qed.
+Defined.
 
 (*Theorem tl_pop_max_env {C n} (x: ThetaLambdaTree C n) :
   {n : ThetaLambdaInner & ThetaLambdaTree C n } :=
@@ -3913,7 +3913,7 @@ Proof.
   apply baseproof.
   apply outerU.
   apply outerP.
-Qed.
+Defined.
 
 
 Fixpoint theta_lambda_pop_loop_x
@@ -3995,7 +3995,7 @@ Proof.
   apply baseproof.
   apply outerU.
   apply outerP.
-Qed.
+Defined.
 
 Inductive OptionTree (C: nat) (aa: AA) :=
 | otsome (n: ThetaLambdaInner) (t : ThetaLambdaTree C n) (tl2 : @TLT2 C aa n t) : OptionTree C aa
@@ -4023,7 +4023,7 @@ Proof.
   constructor.
   apply tr.
   apply baseproof.
-Qed.
+Defined.
 
 Definition tart_bind {C} (f1: tart_fn C) (f2: tart_fn C) : tart_fn C.
 Proof.
@@ -4035,7 +4035,7 @@ Proof.
   specialize (f2 aa' tr' K proof').
   clear aa' tr' proof'.
   apply f2.
-Qed.
+Defined.
 
 (*
 
@@ -4087,7 +4087,7 @@ Proof.
   constructor.
   apply (tart C aa aa_tree aa_removed mi (otnone _ _ e)).
   exact baseproof.
-Qed.
+Defined.
 
 
 Definition theta_lambda_pop_loop_wrapped_x
@@ -4119,7 +4119,7 @@ Proof.
   constructor.
   apply (tart C aa aa_tree aa_removed mi (otnone _ _ e)).
   exact baseproof.
-Qed.
+Defined.
 
 Definition tl_tllct_combine C a b :
   tl_tllct (theta_lambda_combine C a b) = omax (tl_tllct a) (tl_tllct b).
@@ -4147,183 +4147,94 @@ Proof.
       reflexivity.
 Qed.
 
-Inductive LctLabledTree {C} (limit: nat) : forall {n}, ThetaLambdaTree C n -> Type :=
-| l_theta  i a : (a_lct a) <  limit -> LctLabledTree limit (tlt_theta  C i a)
-| l_lambda i a : (a_lct a) >= limit -> LctLabledTree limit (tlt_lambda C i a)
-| l_node {li ri}
-  {lhs: ThetaLambdaTree C li}
-  {rhs: ThetaLambdaTree C ri} :
-  LctLabledTree limit lhs ->
-  LctLabledTree limit rhs ->
-  LctLabledTree limit (tlt_node C lhs rhs).
-
-(* first attempt below didn't consider that more than one might flip *)
-(* second attempt struggles to show the right thing *)
-(* third approach shall use the above LctLabledTree *)
-
-Definition llt_tl_tllct {C n} (t: ThetaLambdaTree C n)
-  {limit} (llt: LctLabledTree limit t) : olt (tl_tllct n) (Some limit).
-Proof.
-  induction llt; unfold olt; simpl.
-  assumption.
-  constructor.
-  rewrite tl_tllct_combine.
-  remember (tl_tllct li) as X.
-  remember (tl_tllct ri) as Y.
-  clear li ri lhs rhs llt1 llt2 HeqX HeqY.
-  destruct X; destruct Y; unfold olt in *; simpl.
-  lia.
-  assumption.
-  assumption.
-  constructor.
-Qed.
-
-Definition llt_tl_lelct {C n} (t: ThetaLambdaTree C n)
-  {limit} (llt: LctLabledTree limit t) : oge (tl_lelct n) (Some limit).
-Proof.
-  induction llt; unfold oge; simpl.
-  constructor.
-  assumption.
-  rewrite tl_lelct_combine.
-  remember (tl_lelct li) as X.
-  remember (tl_lelct ri) as Y.
-  clear li ri lhs rhs llt1 llt2 HeqX HeqY.
-  destruct X; destruct Y; unfold oge in *; simpl.
-  lia.
-  assumption.
-  assumption.
-  constructor.
-Qed.
-
-(* theta -> lambda *)
-Definition tlt2_flip_all_max_lct {C aa n w} (t: ThetaLambdaTree C n)
+(* low lct: theta    high lct: lambda *)
+Definition tlt2_relabel_by_boundary {C aa n} (limit: nat) (t: ThetaLambdaTree C n)
   (tl: @TLT2 C aa n t) :
-  olt (tl_tllct n) (Some w) ->
-  oge (tl_lelct n) (Some w) ->
-  sum (tl_tllct n = None)
-    {n' : ThetaLambdaInner & {t': ThetaLambdaTree C n' &
-    prod (@TLT2 C aa n' t') (prod
-        (olt (tl_tllct n') (tl_tllct n))
-        ((tl_lelct n') = (tl_tllct n)))
-    } }.
+  {n' : ThetaLambdaInner & {t': ThetaLambdaTree C n' &
+  prod (@TLT2 C aa n' t') (prod
+      (olt (tl_tllct n') (Some limit))
+      (oge (tl_lelct n') (Some limit)))
+  } }.
 Proof.
-  intro W.
+  assert (forall (a: A),
+    {n' : ThetaLambdaInner & {t': ThetaLambdaTree C n' &
+      prod (@TLT2 C (cons a nil) n' t') (prod
+          (olt (tl_tllct n') (Some limit))
+          (oge (tl_lelct n') (Some limit)))
+      } }) as new_leaf.
+  intro a; clear aa n t tl.
+  destruct ((a_lct a) <? limit) eqn:W; relb_to_rel; [
+      exists (theta_lambda_leaf_theta  C a);
+        exists (tlt_theta C 0 a) |
+      exists (theta_lambda_leaf_lambda C a);
+        exists (tlt_lambda C 0 a)
+    ];
+    constructor; [
+      apply tlt2_theta |
+      unfold olt; unfold oge; simpl; auto |
+      apply tlt2_lambda |
+      unfold olt; unfold oge; simpl; auto
+    ].
   induction tl.
-  + right.
-    eexists _; eexists _.
-    constructor.
-    apply tlt2_lambda.
-    unfold tl_tllct; unfold tl_lelct; unfold olt; simpl.
-    auto.
-  + left. auto.
+  + apply (new_leaf a).
+  + apply (new_leaf a).
   + rename tl1 into lhs2.
     rename tl2 into rhs2.
-    assert (olt (tl_tllct ri) (Some w)) as P2.
-      clear - W.
-      rewrite tl_tllct_combine in W.
-      clear C.
-      remember (tl_tllct li) as l. clear Heql li.
-      remember (tl_tllct ri) as r. clear Heqr ri.
-      destruct r; unfold olt in *.
-      destruct l;
-        unfold omax in W;
-          unfold olift in W.
-      lia.
-      assumption.
-      trivial.
-    assert (olt (tl_tllct li) (Some w)) as P1.
-      clear - W.
-      rewrite tl_tllct_combine in W.
-      clear C.
-      remember (tl_tllct li) as l. clear Heql li.
-      remember (tl_tllct ri) as r. clear Heqr ri.
-      destruct l; unfold olt in *.
-      destruct r;
-        unfold omax in W;
-          unfold olift in W.
-      lia.
-      assumption.
-      trivial.
-    specialize (IHtl1 P1).
-    specialize (IHtl2 P2).
-
-    replace (tl_tllct (theta_lambda_combine C li ri) = None) with
-            (omax (tl_tllct li) (tl_tllct ri) = None)
-      by (rewrite <- (tl_tllct_combine C); reflexivity).
-
-    destruct IHtl1 as [LZ|[li' [lhs' [lhs2' [LP LQ]]]]];
-      destruct IHtl2 as [RZ|[ri' [rhs' [rhs2' [RP RQ]]]]].
-
-    rewrite LZ in *.
-    rewrite RZ in *.
-    left; clear.
-    auto.
-    1, 2, 3: right.
-    admit.
-    admit.
+    clear new_leaf.
+    destruct IHtl1 as [li' [lhs' [lhs2' [LP LQ]]]];
+      destruct IHtl2 as [ri' [rhs' [rhs2' [RP RQ]]]].
 
     exists (theta_lambda_combine C li' ri').
     exists (tlt_node C lhs' rhs').
     constructor.
     apply (tlt2_node lhs2' rhs2').
     apply i.
-    clear i la ra lhs rhs lhs2 rhs2 lhs' rhs' lhs2' rhs2'.
 
-  rewrite tl_lelct_combine.
-  rewrite tl_tllct_combine.
+    clear i o li ri la ra lhs rhs lhs2 rhs2 lhs' rhs' lhs2' rhs2'.
+    rewrite tl_lelct_combine.
+    rewrite tl_tllct_combine.
+    destruct (tl_tllct li');
+      destruct (tl_tllct ri');
+        destruct (tl_lelct li');
+          destruct (tl_lelct ri');
+            unfold omax in *;
+            unfold omin in *;
+            unfold olift in *;
+            unfold olt in *;
+            unfold oge in *;
+            simpl;
+            lia.
 
-  unfold theta_lambda_combine.
-  unfold tl_tllct.
-  unfold tl_lelct.
-  simpl.
-  admit.
-
- destruct (tl_towards_max_lct (tlt_node C lhs rhs)).
-
-Admitted.
+    clear i o li ri la ra lhs rhs lhs2 rhs2 lhs' rhs' lhs2' rhs2'.
+    rewrite tl_lelct_combine.
+    rewrite tl_tllct_combine.
+    destruct (tl_tllct li');
+      destruct (tl_tllct ri');
+        destruct (tl_lelct li');
+          destruct (tl_lelct ri');
+            unfold omax in *;
+            unfold omin in *;
+            unfold olift in *;
+            unfold olt in *;
+            unfold oge in *;
+            simpl;
+            constructor;
+            lia.
+Defined.
 
 (* theta -> lambda *)
 Definition tlt2_flip_max_lct {C aa n} (t: ThetaLambdaTree C n)
   (tl: @TLT2 C aa n t) :
   option {n' : ThetaLambdaInner & {t': ThetaLambdaTree C n' &
-(@TLT2 C aa n' t') (*
-    prod (@TLT2 C aa n' t') (prod
-      (ole (tl_tllct))
-      (ole (tl_tllct))
-    )*)}}.
+    (@TLT2 C aa n' t') }}.
 Proof.
-  induction tl.
-  apply Some.
-  eexists _.
-  eexists _.
-  apply tlt2_lambda.
-  apply None.
-  destruct (tl_towards_max_lct (tlt_node C lhs rhs)).
-  destruct IHtl1 as [[li' [lhs' lhs2']]|]; [apply Some|apply None].
-  set (ni := theta_lambda_combine C li' ri).
-  set (node := tlt_node C lhs' rhs).
-  exists ni.
-  exists node.
-  apply (tlt2_node lhs2' tl2).
-  apply i.
-
-  (* after the leaf flipped the gap invariant must be upheld *)
-  (* currently this is impossible as when two tasks have the *)
-  (* same lct and one of them gets flipped, the two times are *)
-  (* equal, not one less than the other *)
-  (* probably the solution is to flip ALL tasks with the same *)
-  (* lct at the same time *)
-  admit.
-
-  destruct IHtl2 as [[ri' [rhs' rhs2']]|]; [apply Some|apply None].
-  set (ni := theta_lambda_combine C li ri').
-  set (node := tlt_node C lhs rhs').
-  exists ni.
-  exists node.
-  apply (tlt2_node tl1 rhs2').
-  apply i.
-  admit. (* as above *)
-Admitted.
+  destruct (tl_tllct n) as [limit|] eqn:W; [apply Some|apply None].
+  pose proof (tlt2_relabel_by_boundary limit t tl).
+  destruct H as [n' [t' [tl2 E]]].
+  exists n'.
+  exists t'.
+  exact tl2.
+Defined.
 
 Definition theta_lambda_flip
   (C : nat)
@@ -4343,7 +4254,7 @@ Proof.
   apply (tart C aa aa_tree aa_removed mi (otsome C _ _ t' tl2')).
   exact ((tr, baseproof)).
   exact ((tr, baseproof)).
-Qed.
+Defined.
 
 Fixpoint tart_loop
   (C: nat)
@@ -4369,5 +4280,185 @@ Proof.
   refine (tart_bind (theta_lambda_flip C) _).
   refine (tart_bind (theta_lambda_pop_loop_wrapped_x steps_inner C) _).
   exact continuation.
-Qed.
+Defined.
+
+Definition NT2 C aa := {n: ThetaLambdaInner & {t: ThetaLambdaTree C n &
+  (prod (TLT2 aa t) (tl_lelct n = None)) } }.
+
+Definition nt2_node {C x y} (xy: list A) (lhs: NT2 C x) (rhs: NT2 C y)
+  (i: Interleave x y xy) : (NT2 C xy).
+Proof.
+  unfold NT2 in *.
+  destruct lhs as [ln [lt [lt2 le]]].
+  destruct rhs as [rn [rt [rt2 re]]].
+  exists (theta_lambda_combine C ln rn).
+  exists (tlt_node C lt rt).
+  constructor.
+  apply (tlt2_node lt2 rt2 i).
+  remember (tl_tllct (theta_lambda_combine C ln rn)) as irrelevant1.
+  clear Heqirrelevant1.
+  rewrite tl_lelct_combine.
+  rewrite le.
+  rewrite re.
+  unfold olt.
+  simpl.
+  destruct irrelevant1; constructor.
+
+  rewrite tl_lelct_combine.
+  rewrite le.
+  rewrite re.
+  auto.
+Defined.
+
+Definition concat_interleave {X} (a b: list X) :
+  Interleave a b (app a b).
+Proof.
+  induction a.
+  simpl.
+  induction b.
+  constructor.
+  constructor.
+  exact IHb.
+  simpl.
+  apply s_left.
+  exact IHa.
+Defined.
+
+Inductive bstack (C: nat) : forall (a: list A), Type :=
+| b_nil       {p:   list A} (e: NT2 C p)                  : bstack C p
+| b_cons_some {p q: list A} (e: NT2 C p) (xs: bstack C q) : bstack C (app q p)
+| b_cons_none {  q: list A}              (xs: bstack C q) : bstack C q.
+
+Fixpoint nt2_tree_merge (C: nat) (f g: AA) (y: NT2 C g)
+  (stack: bstack C f)
+  : bstack C (app f g).
+Proof.
+  specialize (nt2_tree_merge C).
+  destruct stack.
+  + apply b_cons_none.
+    apply b_nil.
+    apply (nt2_node (app p g) e y).
+    apply concat_interleave.
+  + replace ((q ++ p) ++ g) with (q ++ (p ++ g)) by apply app_assoc.
+    apply nt2_tree_merge.
+    apply (nt2_node (app p g) e y).
+    apply concat_interleave.
+    apply stack.
+  + apply (b_cons_some C).
+    apply y.
+    apply stack.
+Defined.
+
+Definition nt2_tree_merge_remaining_ (C: nat) (f: AA) (stack: bstack C f) :
+  forall (g: AA) (y: NT2 C g), NT2 C (app f g).
+Proof.
+  induction stack; intros.
+  + apply (nt2_node (p++g) e y).
+    apply concat_interleave.
+  + replace ((q ++ p) ++ g) with (q ++ (p ++ g)) by apply app_assoc.
+    apply IHstack.
+    apply (nt2_node (p++g) e y).
+    apply concat_interleave.
+  + apply IHstack.
+    apply y.
+Defined.
+
+Fixpoint nt2_tree_merge_remaining (C: nat) {aa: AA}
+  (stack: bstack C aa) : NT2 C aa
+:=
+  match stack with
+  | b_nil _ e          => e
+  | b_cons_some _ e xs => nt2_tree_merge_remaining_ C _ xs _ e
+  | b_cons_none _ xs   => nt2_tree_merge_remaining C xs
+  end.
+
+Definition stack_from_nonempty (C: nat) (aa: AA) :
+  (aa=nil -> False) -> (bstack C (rev aa)).
+Proof.
+  induction aa; intros.
+  exfalso; apply H; reflexivity.
+  clear H.
+  destruct aa eqn:W.
+  apply b_nil.
+  exists (theta_lambda_leaf_theta C a).
+  exists (tlt_theta C 0 a).
+  constructor.
+  apply tlt2_theta.
+  unfold tl_lelct.
+  reflexivity.
+  rename l into z.
+  rename a0 into b.
+  rename aa into bz.
+  simpl.
+  especialize IHaa.
+  clear; intro; inversion H.
+  simpl in IHaa.
+  apply nt2_tree_merge.
+  exists (theta_lambda_leaf_theta C a).
+  exists (tlt_theta C 0 a).
+  constructor.
+  apply tlt2_theta.
+  unfold tl_lelct.
+  reflexivity.
+  apply IHaa.
+Defined.
+
+Definition tart_for_aa (C: nat) (aa: AA) : TreeAndRemovedTasks C aa.
+Proof.
+  destruct aa eqn:W.
+  apply (tart C nil nil nil).
+  apply concat_interleave.
+  apply otnone.
+  reflexivity.
+  rewrite <- W.
+  apply (tart C aa aa nil).
+  clear W a0.
+  induction aa.
+  constructor.
+  constructor.
+  apply IHaa.
+
+  assert (bstack C aa) as stack.
+  pose proof (stack_from_nonempty C (rev aa)).
+  rewrite rev_involutive in H.
+  apply H. clear H.
+  subst.
+  intro.
+  assert (List.length (rev (cons a a0)) = @List.length A nil).
+  apply f_equal; apply H.
+  rewrite rev_length in H0.
+  simpl in H0.
+  inversion H0.
+
+  pose proof (nt2_tree_merge_remaining C stack).
+  destruct H as [n [t [tl e]]].
+
+  eapply (otsome _ _ _ t).
+  apply tl.
+Defined.
+
+
+Definition main (C : nat) (start: AA) : {improved: AA & Proof C start improved}.
+Proof.
+  pose proof theta_lambda_sweep_loop as main_loop.
+  specialize (main_loop
+    C
+    (List.length start)
+    (List.length start)
+    start
+    (tart_for_aa C start)
+    start
+    (p_id C start)).
+  destruct main_loop as [improved [tart' proof]].
+  exists improved.
+  exact proof.
+Defined.
+
+
+Example example2_0 : AA :=
+(cons (mkActivity 0 2 1 1)
+(cons (mkActivity 0 5 1 2)
+nil)).
+
+Compute (main 1 example2_0).
 
