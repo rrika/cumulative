@@ -1876,6 +1876,16 @@ Definition olt (a b: option nat) := match (a, b) with
 | _ => True
 end.
 
+Definition oeq (a b: option nat) := match (a, b) with
+| (Some a, Some b) => a = b
+| _ => True
+end.
+
+Definition oge (a b: option nat) := match (a, b) with
+| (Some a, Some b) => a >= b
+| _ => True
+end.
+
 Structure Env := envp { vest: nat; vnrg: nat; vnrg2: nat }.
 Definition evalEnvelope C (e: Env) : nat :=
   match e with envp a b c => (C*a)+b+c end.
@@ -4110,6 +4120,167 @@ Proof.
   apply (tart C aa aa_tree aa_removed mi (otnone _ _ e)).
   exact baseproof.
 Qed.
+
+Definition tl_tllct_combine C a b :
+  tl_tllct (theta_lambda_combine C a b) = omax (tl_tllct a) (tl_tllct b).
+Proof.
+  destruct a.
+  destruct b.
+  unfold tl_tllct.
+  unfold theta_lambda_combine.
+  simpl.
+  destruct tl_teest_tllct0 as [[e0 l0]|];
+    destruct tl_teest_tllct1 as [[e1 l1]|];
+      reflexivity.
+Qed.
+
+Definition tl_lelct_combine C a b :
+  tl_lelct (theta_lambda_combine C a b) = omin (tl_lelct a) (tl_lelct b).
+Proof.
+  destruct a.
+  destruct b.
+  unfold tl_lelct.
+  unfold theta_lambda_combine.
+  simpl.
+  destruct tl_dataΛ0 as [[E0 n0]|];
+    destruct tl_dataΛ1 as [[E1 n1]|];
+      reflexivity.
+Qed.
+
+Inductive LctLabledTree {C} (limit: nat) : forall {n}, ThetaLambdaTree C n -> Type :=
+| l_theta  i a : (a_lct a) <  limit -> LctLabledTree limit (tlt_theta  C i a)
+| l_lambda i a : (a_lct a) >= limit -> LctLabledTree limit (tlt_lambda C i a)
+| l_node {li ri}
+  {lhs: ThetaLambdaTree C li}
+  {rhs: ThetaLambdaTree C ri} :
+  LctLabledTree limit lhs ->
+  LctLabledTree limit rhs ->
+  LctLabledTree limit (tlt_node C lhs rhs).
+
+(* first attempt below didn't consider that more than one might flip *)
+(* second attempt struggles to show the right thing *)
+(* third approach shall use the above LctLabledTree *)
+
+Definition llt_tl_tllct {C n} (t: ThetaLambdaTree C n)
+  {limit} (llt: LctLabledTree limit t) : olt (tl_tllct n) (Some limit).
+Proof.
+  induction llt; unfold olt; simpl.
+  assumption.
+  constructor.
+  rewrite tl_tllct_combine.
+  remember (tl_tllct li) as X.
+  remember (tl_tllct ri) as Y.
+  clear li ri lhs rhs llt1 llt2 HeqX HeqY.
+  destruct X; destruct Y; unfold olt in *; simpl.
+  lia.
+  assumption.
+  assumption.
+  constructor.
+Qed.
+
+Definition llt_tl_lelct {C n} (t: ThetaLambdaTree C n)
+  {limit} (llt: LctLabledTree limit t) : oge (tl_lelct n) (Some limit).
+Proof.
+  induction llt; unfold oge; simpl.
+  constructor.
+  assumption.
+  rewrite tl_lelct_combine.
+  remember (tl_lelct li) as X.
+  remember (tl_lelct ri) as Y.
+  clear li ri lhs rhs llt1 llt2 HeqX HeqY.
+  destruct X; destruct Y; unfold oge in *; simpl.
+  lia.
+  assumption.
+  assumption.
+  constructor.
+Qed.
+
+(* theta -> lambda *)
+Definition tlt2_flip_all_max_lct {C aa n w} (t: ThetaLambdaTree C n)
+  (tl: @TLT2 C aa n t) :
+  olt (tl_tllct n) (Some w) ->
+  oge (tl_lelct n) (Some w) ->
+  sum (tl_tllct n = None)
+    {n' : ThetaLambdaInner & {t': ThetaLambdaTree C n' &
+    prod (@TLT2 C aa n' t') (prod
+        (olt (tl_tllct n') (tl_tllct n))
+        ((tl_lelct n') = (tl_tllct n)))
+    } }.
+Proof.
+  intro W.
+  induction tl.
+  + right.
+    eexists _; eexists _.
+    constructor.
+    apply tlt2_lambda.
+    unfold tl_tllct; unfold tl_lelct; unfold olt; simpl.
+    auto.
+  + left. auto.
+  + rename tl1 into lhs2.
+    rename tl2 into rhs2.
+    assert (olt (tl_tllct ri) (Some w)) as P2.
+      clear - W.
+      rewrite tl_tllct_combine in W.
+      clear C.
+      remember (tl_tllct li) as l. clear Heql li.
+      remember (tl_tllct ri) as r. clear Heqr ri.
+      destruct r; unfold olt in *.
+      destruct l;
+        unfold omax in W;
+          unfold olift in W.
+      lia.
+      assumption.
+      trivial.
+    assert (olt (tl_tllct li) (Some w)) as P1.
+      clear - W.
+      rewrite tl_tllct_combine in W.
+      clear C.
+      remember (tl_tllct li) as l. clear Heql li.
+      remember (tl_tllct ri) as r. clear Heqr ri.
+      destruct l; unfold olt in *.
+      destruct r;
+        unfold omax in W;
+          unfold olift in W.
+      lia.
+      assumption.
+      trivial.
+    specialize (IHtl1 P1).
+    specialize (IHtl2 P2).
+
+    replace (tl_tllct (theta_lambda_combine C li ri) = None) with
+            (omax (tl_tllct li) (tl_tllct ri) = None)
+      by (rewrite <- (tl_tllct_combine C); reflexivity).
+
+    destruct IHtl1 as [LZ|[li' [lhs' [lhs2' [LP LQ]]]]];
+      destruct IHtl2 as [RZ|[ri' [rhs' [rhs2' [RP RQ]]]]].
+
+    rewrite LZ in *.
+    rewrite RZ in *.
+    left; clear.
+    auto.
+    1, 2, 3: right.
+    admit.
+    admit.
+
+    exists (theta_lambda_combine C li' ri').
+    exists (tlt_node C lhs' rhs').
+    constructor.
+    apply (tlt2_node lhs2' rhs2').
+    apply i.
+    clear i la ra lhs rhs lhs2 rhs2 lhs' rhs' lhs2' rhs2'.
+
+  rewrite tl_lelct_combine.
+  rewrite tl_tllct_combine.
+
+  unfold theta_lambda_combine.
+  unfold tl_tllct.
+  unfold tl_lelct.
+  simpl.
+  admit.
+
+ destruct (tl_towards_max_lct (tlt_node C lhs rhs)).
+
+Admitted.
 
 (* theta -> lambda *)
 Definition tlt2_flip_max_lct {C aa n} (t: ThetaLambdaTree C n)
