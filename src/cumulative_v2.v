@@ -2021,7 +2021,7 @@ match x with
 | tlt_lambda _ i a => load1 est lct a
 | tlt_node _ lhs rhs => (tl_load_lambda est lct lhs) + (tl_load_lambda est lct rhs)
 end.
-
+(*
 Theorem tl_teest_tllct_none_recursive C a b :
   tl_teest_tllct (theta_lambda_combine C a b) = None ->
   tl_teest_tllct a = None /\
@@ -2051,7 +2051,7 @@ Proof.
   discriminate H.
   easy.
 Qed.
-
+*)
 Theorem tl_load_theta_eq {C n} (est lct: nat) (x: ThetaLambdaTree C n) :
   match tl_lelct n with
   | Some lelct => lct < lelct
@@ -2112,6 +2112,7 @@ Proof.
   reflexivity.
 Qed.
 
+(*
 Fixpoint tl_flip_max_lct {C n} (x: ThetaLambdaTree C n) :
   option {n : ThetaLambdaInner & ThetaLambdaTree C n } :=
 match x with
@@ -2136,6 +2137,7 @@ match x with
     if rllct <? lllct then xl else xr
   end
 end.
+*)
 
 
 Definition argMaxEnvelope C (x y: Env) {A} (t u: A) : A :=
@@ -2245,6 +2247,7 @@ Proof.
   apply subp.
 Qed.
 
+(*
 Fixpoint tl_pop_max_env {C n} (x: ThetaLambdaTree C n) :
   {n : ThetaLambdaInner & ThetaLambdaTree C n } :=
 match x with
@@ -2281,7 +2284,7 @@ match x with
   | (None,          None         ) => existT _ _ x
   end
 end.
-
+*)
 
 (*Theorem tl_pop_max_env_some {C n} (x: ThetaLambdaTree C n) :
   tl_pop_max_env x <> None ->
@@ -2340,7 +2343,7 @@ Inductive TLT2 {C} : AA -> forall {n}, ThetaLambdaTree C n -> Type :=
   Interleave (*tl_llct_prop (theta_lambda_combine li ri)*) la ra a ->
   olt (tl_tllct (theta_lambda_combine C li ri)) (tl_lelct (theta_lambda_combine C li ri)) ->
   TLT2 a (tlt_node C lhs rhs).
-
+(*
 Theorem TLT2_tllct_lt_lelct {C aa n t} (tl2: @TLT2 C aa n t) :
   olt (tl_tllct n) (tl_lelct n).
 Proof.
@@ -2349,7 +2352,8 @@ Proof.
   compute; apply I.
   apply o.
 Qed.
-
+*)
+(*
 Theorem TLT2_nil {C n t} : @TLT2 C nil n t -> False.
 Proof.
   intro.
@@ -2359,7 +2363,7 @@ Proof.
   apply IHTLT2_1.
   auto.
 Qed.
-
+*)
 Inductive InterleavePrefix (*D*) (x: AA) (y: AA) (zp: AA) :=
   mkIP (xs:AA) (xp:AA) (ys:AA) (yp:AA) :
     x = xs++xp -> y = ys++yp ->
@@ -2503,6 +2507,7 @@ Proof.
   reflexivity.
 Qed.
 
+(*
 Theorem tl2_load_eq {C n aa} {x: ThetaLambdaTree C n}
   (est lct: nat)
   (t2: TLT2 aa x) :
@@ -2525,6 +2530,7 @@ Proof.
     rewrite IHt2_2.
       reflexivity.
 Qed.
+*)
 
 Require Import String.
 
@@ -2539,7 +2545,7 @@ Proof.
   inversion H0; subst.  
   auto.
 Qed.
-
+(*
 Theorem bump_forall_lct {L} (n m: nat) : n <= m ->
   Forall (fun a : Activity => a_lct a <= n) L ->
   Forall (fun a : Activity => a_lct a <= m) L.
@@ -2578,7 +2584,7 @@ Proof.
   lia.
   lia.
 Qed.
-
+*)
 
 (*
 Theorem tl_tllct_ok {X C n} {x: ThetaLambdaTree C n} (t2: TLT2 X x) :
@@ -2608,7 +2614,7 @@ Proof.
     assumption.
     simpl.
 *)
-
+(*
 Theorem tl_load_theta_eq_tree {X C n} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
   (est lct: nat) :
   (exists lelct,
@@ -2704,7 +2710,9 @@ Proof.
   inversion H; clear H.
   rewrite <- IHx1; [rewrite <- IHx2|]; [|right|right]; reflexivity.
 Qed.
+*)
 
+(*
 Theorem tl_theta_load_wiggle {X C n} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
   (est: nat) :
   forall (lct: nat),
@@ -2738,6 +2746,8 @@ Proof.
   exists lelct.
   auto.
 Qed.
+*)
+
 (*
 Theorem tl_pop_max_env_load {X C n} {x: ThetaLambdaTree C n} (t2: TLT2 X x) :
   match (tl_tllct n) with
@@ -3098,7 +3108,7 @@ Proof.
     (* contradiction *)
     discriminate H.
 Qed.
-
+(*
 Theorem UNUSED_extend_proof_by_tl_pop
   {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
   {K} (baseproof: Proof C K X)
@@ -3138,7 +3148,7 @@ Proof.
   exists X.
   exact baseproof.
 Qed.
-
+*)
 Theorem proofstep_by_tl_pop
   {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
 :
@@ -3350,6 +3360,7 @@ Proof.
     apply IHmi'.
 Defined.
 
+(*
 Definition deinterleave_update
   {c p oe ol ne nl} {Z Z'} (U: Update c p oe ol ne nl Z Z')
   {X Y} (mi: Interleave X Y Z)
@@ -3388,6 +3399,7 @@ Proof.
       eexists (cons _ y).
       apply u0.
 Qed.
+*)
 
 Definition deinterleave_update_
   {c p oe ol ne nl} {Z Z'} (U: Update c p oe ol ne nl Z Z')
@@ -3688,6 +3700,7 @@ Proof.
   apply (transitive_le_lt_le A_B B_C C_D).
 Qed.
 
+(* used in update_tl2_for_pop *)
 Theorem tlt2_node_condition_adapt_right_2 {C li ri ri'}
   (G: Gap (tl_tllct ri') (tl_tllct ri) (tl_lelct ri) (tl_lelct ri')) :
   Gap (tl_tllct (theta_lambda_combine C li ri')) (tl_tllct (theta_lambda_combine C li ri))
@@ -4471,7 +4484,7 @@ Proof.
   exists improved.
   exact proof.
 Defined.
-
+(*
 
 Example example2_0 : AA :=
 (cons (mkActivity 0 2 1 1)
@@ -4480,3 +4493,4 @@ nil)).
 
 Compute (main 1 example2_0).
 
+*)
