@@ -1,6 +1,8 @@
 Require Import Coq.Program.Equality.
 Require Import Lia.
 
+Inductive Hide A : Prop := hide : A -> Hide A.
+
 Ltac especialize H2 :=
   match goal with
   | H2 : ?a -> ?b |- _ =>
@@ -3014,20 +3016,33 @@ Proof.
       apply u0.
 Qed.
 
+Require Import Coq.Logic.Eqdep.
+
+Ltac simpl_existT :=
+  match goal with
+    [ H : existT _ ?x _ = existT _ ?x _ |- _ ] =>
+    let Hi := fresh H in assert(Hi:=inj_pairT2 _ _ _ _ _ H) ; clear H
+  end.
+
+Ltac simpl_existTs := repeat simpl_existT.
+
+
 Theorem update_by_tl_pop
-  {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x) (overload_lct: nat)
+  {C n e} (x: ThetaLambdaTree C n) (overload_lct: nat)
 :
   tl_dataΛ n = Some e ->
-  { su : SingleUpdate & { Y : AA & (prod 
+  { su : SingleUpdate | (forall X (t2: TLT2 X x), Hide { Y : AA & (prod 
     (su_ol su = su_nl su)
     (Update (su_c su)  (su_p su)
             (su_oe su) (su_ol su)
             (su_ne su) (su_nl su)
      X Y)
-  ) } }.
+  ) }) }.
 Proof.
+  intro.
+(*  generalize dependent X.*)
   generalize dependent e.
-  induction t2; intros; simpl in *.
+  induction x; intros; simpl in *.
   (* theta *)
   - discriminate H.
   (* lambda *)
@@ -3047,8 +3062,14 @@ Proof.
       (a_lct b)
     ) as su.
     exists su.
+    intro X.
+    intro t2.
+    apply hide.
+    rewrite (TLT2_X_of_lambda t2).
+
     exists (cons b nil).
     refine (eq_refl, _).
+
     apply u0m.
     destruct a; reflexivity.
     unfold b; reflexivity.
@@ -3057,8 +3078,10 @@ Proof.
   - destruct (tl_dataΛ li) as [[el el_]|] eqn:B1;
     destruct (tl_dataΛ ri) as [[er er_]|] eqn:B2;
     subst.
-    specialize (IHt2_1 (el, el_) eq_refl).
-    specialize (IHt2_2 (er, er_) eq_refl).
+
+
+    specialize (IHx1 (el, el_) eq_refl).
+    specialize (IHx2 (er, er_) eq_refl).
 
     unfold maxEnvelope3 in H.
     unfold maxEnvelope in H.
@@ -3072,22 +3095,41 @@ Proof.
            then er
            else addToEnvelope2 (tl_envelope li) (tl_energyΛ ri))).
     (* both sides have Λ, right side wins *)
-    clear IHt2_1.
-    destruct IHt2_2 as [su [YR [YE YU]]].
+    clear IHx1.
+    destruct IHx2 as [su YRYEYU].
     exists su.
-    exists (interleave_replace_right la ra YR a i).
+    intros X tl2.
+    inversion tl2.
+    simpl_existTs.
+    subst.
+    specialize (YRYEYU ra H16).
+    destruct YRYEYU as [YRYEYU].
+    destruct YRYEYU as [YR [YE YU]].
+    apply hide.
+    exists (interleave_replace_right la ra YR (*a*)_ (*i*)H17).
     refine (YE, _).
     apply update_right.
     apply YU.
     (* both sides have Λ, left side wins *)
-    clear IHt2_2.
-    destruct IHt2_1 as [su [XL [XE XU]]].
+    clear IHx2.
+    destruct IHx1 as [su XLXEXU].
     exists su.
-    exists (interleave_replace_left la XL ra a i).
+    intros X tl2.
+    inversion tl2.
+    simpl_existTs.
+    subst.
+    specialize (XLXEXU la H5).
+    destruct XLXEXU as [XLXEXU].
+    destruct XLXEXU as [XL [XE XU]].
+    apply hide.
+    exists (interleave_replace_left la XL ra (*a*)X (*i*)H17).
     refine (XE, _).
     apply update_left.
     apply XU.
     (* left side has Λ *)
+
+    admit.
+(*
     clear IHt2_2.
     specialize (IHt2_1 (el, el_) eq_refl).
     destruct IHt2_1 as [su [XL [XE XU]]].
@@ -3096,7 +3138,11 @@ Proof.
     refine (XE, _).
     apply update_left.
     apply XU.
+*)
     (* right side has Λ *)
+
+    admit.
+(*
     clear IHt2_1.
     specialize (IHt2_2 (er, er_) eq_refl).
     destruct IHt2_2 as [su [YR [YE YU]]].
@@ -3105,9 +3151,10 @@ Proof.
     refine (YE, _).
     apply update_right.
     apply YU.
+*)
     (* contradiction *)
     discriminate H.
-Qed.
+Admitted.
 (*
 Theorem UNUSED_extend_proof_by_tl_pop
   {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
@@ -3150,7 +3197,7 @@ Proof.
 Qed.
 *)
 Theorem proofstep_by_tl_pop
-  {X C n e} {x: ThetaLambdaTree C n} (t2: TLT2 X x)
+  {X C n e} {x: ThetaLambdaTree C n} (t2: Hide (TLT2 X x))
 :
   tl_dataΛ n = Some e ->
   option { c : nat &
@@ -3158,16 +3205,15 @@ Theorem proofstep_by_tl_pop
   { oe : nat &
   { ne : nat &
   { l : nat &
-  { Y : AA &
-    prod
+  prod (ProofStep C X c p oe ne l)
+  (Hide { Y : AA &
     (Update c p oe l ne l X Y)
-    (ProofStep C X c p oe ne l)
-  } } } } } }.
+  }) } } } } }.
 Proof.
   intro.
   destruct e as [[vest vnrg vnrg2] tllct].
-  destruct (update_by_tl_pop t2 tllct H) as [[c p oe ol ne nl] [Y [m update]]].
-  simpl in *.
+  destruct (update_by_tl_pop (*t2*) x tllct H) as [[c p oe ol ne nl] more].
+  simpl in more.
 
   destruct (ne + p <=? ol) eqn:U;
     relb_to_rel.
@@ -3180,12 +3226,20 @@ Proof.
   exists oe.
   exists ne.
   exists ol.
-  exists Y.
-  rewrite <- m in update.
-  refine ((update, _)).
+  constructor.
+
   apply ps_tighten_est_plain.
   apply B.
   apply U.
+
+  destruct t2.
+  specialize (more X H0).
+  destruct more as [[Y [m update]]].
+
+  apply hide.
+  exists Y.
+  rewrite <- m in update.
+  exact update.
 
   (* not actually overloaded *)
   apply None.
@@ -3953,7 +4007,7 @@ Fixpoint theta_lambda_pop_loop_x
   (n : ThetaLambdaInner)
   (t : ThetaLambdaTree C n)
   (aa_tree aa_removed aa_total : AA)
-  (tl2 : @TLT2 C aa_tree n t)
+  (tl2 : Hide (@TLT2 C aa_tree n t))
   (mi: Interleave aa_tree aa_removed aa_total)
   {K} (baseproof: Proof C K aa_total)
 :
@@ -4029,7 +4083,7 @@ Proof.
 Defined.
 
 Inductive OptionTree (C: nat) (aa: AA) :=
-| otsome (n: ThetaLambdaInner) (t : ThetaLambdaTree C n) (tl2 : @TLT2 C aa n t) : OptionTree C aa
+| otsome (n: ThetaLambdaInner) (t : ThetaLambdaTree C n) (tl2 : Hide (@TLT2 C aa n t)) : OptionTree C aa
 | otnone : aa = nil -> OptionTree C aa.
 
 Inductive TreeAndRemovedTasks (C: nat) (aa: AA) :=
@@ -4465,6 +4519,7 @@ Proof.
   destruct H as [n [t [tl e]]].
 
   eapply (otsome _ _ _ t).
+  apply hide.
   apply tl.
 Defined.
 
