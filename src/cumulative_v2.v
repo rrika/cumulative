@@ -524,7 +524,7 @@ Proof.
   reflexivity.
   intros.
   pose proof (IHn m (S a)); clear IHn.
-  rewrite <- Plus.plus_Snm_nSm.
+  rewrite <- plus_n_Sm.
   simpl in *.
   rewrite <- Nat.add_assoc.
   f_equal.
@@ -563,7 +563,7 @@ Proof.
   reflexivity.
   intros.
   pose proof (IHn m (S t)); clear IHn.
-  rewrite <- Plus.plus_Snm_nSm.
+  rewrite <- plus_n_Sm.
   simpl in *.
   rewrite <- Nat.add_assoc.
   f_equal.
@@ -656,6 +656,11 @@ Proof.
   lia.
 Qed.
 
+Lemma plus_le_compat_l : forall n m p, n <= m -> p + n <= p + m.
+Proof.
+  induction p; simpl in |- *; auto with arith.
+Qed.
+
 (*     s        s+p        *)
 (* ____|¯¯¯¯¯¯¯¯|____      *)
 (*       ^^^^^^            *)
@@ -679,7 +684,7 @@ Proof.
   destruct (t <? s + a_p a) eqn:K.
   simpl.
   pose proof (IHn (S t)).
-  apply Plus.plus_le_compat_l.
+  apply plus_le_compat_l.
   apply H1.
   lia.
   lia.
@@ -938,6 +943,19 @@ Proof.
   destruct H0; relb_to_rel; lia.
 Qed.
 
+Lemma plus_le_compat : forall n m p q, n <= m -> p <= q -> n + p <= m + q.
+Proof.
+  intros n m p q H H0.
+  elim H; simpl in |- *; auto with arith.
+Qed.
+
+Lemma mult_le_compat_l : forall n m p, n <= m -> p * n <= p * m.
+Proof.
+  induction p as [| p IHp]. intros. simpl in |- *. apply le_n.
+  intros. simpl in |- *. apply plus_le_compat. assumption.
+  apply IHp. assumption.
+Qed.
+
 (* want to use this on 'a' past split into the overloaded branch    *)
 (* so its a_lct is different, BX needs to be different too for this *)
 Theorem load1_sample_sum_right_truncated a s
@@ -1022,7 +1040,7 @@ Proof.
       apply J.
       (* activity is contained *)
       replace (load1_sample_sum _ _ _ _) with (a_c a * a_p a).
-      apply Mult.mult_le_compat_l.
+      apply mult_le_compat_l.
       assumption.
       clear n H2 H4 IBleft.
       pose proof (load1_sample_sum_contained_eq a s t m).
@@ -1344,7 +1362,7 @@ Proof.
   lia.
   lia.
   assert (a_c a * rrr <= a_c a * (lct - est - min (lct - est) (a_lct a - a_p a - est))).
-  apply Mult.mult_le_compat_l.
+  apply mult_le_compat_l.
   assumption.
   lia.
 
